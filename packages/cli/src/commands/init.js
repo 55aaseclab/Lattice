@@ -20,8 +20,19 @@ export async function initCommand({ args, rest }) {
   fs.mkdirSync(targetDir, { recursive: true });
   fs.cpSync(templateDir, targetDir, { recursive: true });
 
-  const runtimeDep = relativeFileDep(targetDir, path.resolve(templateDir, "..", "..", "..", "..", "runtime"));
-  const cliDep = relativeFileDep(targetDir, path.resolve(templateDir, "..", "..", ".."));
+  const cliPackagePath = path.resolve(templateDir, "..", "..", "..", "package.json");
+  const cliPackage = readPackage(cliPackagePath);
+  const runtimePackagePath = path.resolve(path.dirname(cliPackagePath), "..", "runtime", "package.json");
+  const useLocalPackages = Boolean(args.local);
+  if (useLocalPackages && !fs.existsSync(runtimePackagePath)) {
+    throw new Error("--local requires a Lattice monorepo checkout with sibling runtime and cli packages");
+  }
+  const runtimeDep = useLocalPackages
+    ? relativeFileDep(targetDir, path.dirname(runtimePackagePath))
+    : cliPackage.dependencies["@55aaseclab/lattice-runtime"];
+  const cliDep = useLocalPackages
+    ? relativeFileDep(targetDir, path.dirname(cliPackagePath))
+    : `^${cliPackage.version}`;
 
   const packageJson = {
     name: projectName,
@@ -46,6 +57,7 @@ export async function initCommand({ args, rest }) {
 
   console.log(`[lattice] initialized Lattice project at ${targetDir}`);
   console.log(`[lattice] theme: ${theme}`);
+  if (useLocalPackages) console.log("[lattice] using local monorepo packages (--local)");
 
   if (!args["no-install"]) {
     console.log("[lattice] installing dependencies (npm install)...");
@@ -64,6 +76,10 @@ Next steps:
   npm run validate               # validate manifests, placements, and assets
   npm run build                  # build the portal to dist/
   npm run export -- --deck demo  # export a self-contained static deck`);
+}
+
+function readPackage(packagePath) {
+  return JSON.parse(fs.readFileSync(packagePath, "utf8"));
 }
 
 function relativeFileDep(fromDir, toDir) {

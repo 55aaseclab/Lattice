@@ -1,6 +1,6 @@
 {
   "name": "@55aaseclab/lattice-runtime",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "Lattice slide runtime: grid system, layout IR, primitives, themes, HTML/CSS renderer, validator, and Reveal.js integration.",
   "license": "MIT",

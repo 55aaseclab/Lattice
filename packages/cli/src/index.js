@@ -42,7 +42,7 @@ async function main() {
     console.log(`lattice — native slide system
 
 Usage:
-  lattice init <dir> [--theme <name>] [--example <name>] [--no-install]
+  lattice init <dir> [--theme <name>] [--example <name>] [--local] [--no-install]
   lattice dev [--port <port>] [--host <host>] [--deck <id>] [--grid] [--open]
   lattice validate [--deck <id>]
   lattice build [--out <dir>]
