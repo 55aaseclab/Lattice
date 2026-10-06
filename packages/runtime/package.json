@@ -4,6 +4,11 @@
   "type": "module",
   "description": "Lattice slide runtime: grid system, layout IR, primitives, themes, HTML/CSS renderer, validator, and Reveal.js integration.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/55aaseclab/Lattice.git",
+    "directory": "packages/runtime"
+  },
   "files": [
     "src/",
     "themes/",

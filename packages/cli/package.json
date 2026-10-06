@@ -4,6 +4,11 @@
   "type": "module",
   "description": "Lattice CLI: initialize, develop, validate, build, and export native slide projects.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/55aaseclab/Lattice.git",
+    "directory": "packages/cli"
+  },
   "files": [
     "src/",
     "README.md"
