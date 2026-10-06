@@ -1,5 +1,5 @@
 ---
-name: slides
+name: lattice
 description: Use when creating or updating native Lattice slides. Build on the grid system, compose with reusable layout primitives and the simple-light theme, keep deck data separate from runtime code, and verify the rendered result.
 ---
 

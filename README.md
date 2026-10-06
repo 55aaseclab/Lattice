@@ -26,7 +26,7 @@ lattice/
 ├── examples/
 │   └── demo-deck/   minimal standard deck package example
 └── skills/
-    └── slides/      AI workflow skill for native slide work
+    └── lattice/     AI workflow skill for native slide work
 ```
 
 ## Development
