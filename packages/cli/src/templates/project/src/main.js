@@ -41,7 +41,7 @@ function renderLauncher(container) {
     <div class="app-shell">
       <header class="app-menu">
         <div class="app-menu-brand">
-          <h1 class="app-menu-title">Slides Collection</h1>
+          <h1 class="app-menu-title">Decks Collection</h1>
           <p class="app-menu-subtitle">Launcher</p>
         </div>
       </header>
