@@ -1,0 +1,33 @@
+{
+  "name": "@lattice/runtime",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Lattice slide runtime: grid system, layout IR, primitives, themes, HTML/CSS renderer, validator, and Reveal.js integration.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.js",
+    "./grid": "./src/grid/index.js",
+    "./layout": "./src/layout/index.js",
+    "./primitives": "./src/primitives/index.js",
+    "./renderer": "./src/renderer/index.js",
+    "./renderer/app.css": "./src/renderer/app.css",
+    "./validator": "./src/validator/index.js",
+    "./deck": "./src/deck/index.js",
+    "./themes/simple-light": "./themes/simple-light/index.js",
+    "./themes/simple-light/styles.css": "./themes/simple-light/styles.css"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "d3-array": "^3.2.4",
+    "d3-axis": "^3.0.0",
+    "d3-drag": "^3.0.0",
+    "d3-scale": "^4.0.2",
+    "d3-selection": "^3.0.0",
+    "d3-shape": "^3.2.0",
+    "d3-time-format": "^4.1.0",
+    "katex": "^0.17.0",
+    "reveal.js": "^6.0.1"
+  }
+}

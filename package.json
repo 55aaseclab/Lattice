@@ -1,0 +1,19 @@
+{
+  "name": "lattice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lattice native slide system: how to create, lay out, validate, render, and export slides.",
+  "workspaces": [
+    "packages/runtime",
+    "packages/cli"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

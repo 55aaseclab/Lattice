@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 320" width="480" height="320">
+  <rect width="480" height="320" fill="#ffffff"/>
+  <g stroke="#dcdcdc" stroke-width="1">
+    <rect x="15" y="15" width="450" height="290" fill="none" stroke-dasharray="4 3"/>
+  </g>
+  <g fill="rgba(0,102,204,0.12)" stroke="rgba(0,102,204,0.45)" stroke-width="1">
+    <rect x="15" y="15" width="52.5" height="290"/>
+    <rect x="86.25" y="15" width="52.5" height="290"/>
+    <rect x="157.5" y="15" width="52.5" height="290"/>
+    <rect x="228.75" y="15" width="52.5" height="290"/>
+    <rect x="300" y="15" width="52.5" height="290"/>
+    <rect x="371.25" y="15" width="52.5" height="290"/>
+  </g>
+  <g fill="rgba(196,107,0,0.16)" stroke="rgba(196,107,0,0.8)" stroke-width="1.5" stroke-dasharray="5 3">
+    <rect x="15" y="42" width="408.75" height="64"/>
+    <rect x="15" y="128" width="408.75" height="150"/>
+  </g>
+  <g font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#595959">
+    <text x="22" y="58">title slot</text>
+    <text x="22" y="144">body slot</text>
+    <text x="377" y="306" text-anchor="end">12 columns x 8 rows</text>
+  </g>
+</svg>

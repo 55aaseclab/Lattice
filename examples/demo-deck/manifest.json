@@ -1,0 +1,13 @@
+{
+  "schema": "lattice.deck.v1",
+  "id": "demo-deck",
+  "title": "Lattice Demo Deck",
+  "runtime": "^0.1.0",
+  "theme": "simple-light",
+  "entry": {
+    "content": "./content.js",
+    "layout": "./layout.js",
+    "notes": "./notes.js"
+  },
+  "assets": "./assets/"
+}

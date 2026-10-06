@@ -1,0 +1,17 @@
+{
+  "name": "@lattice/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Lattice CLI: initialize, develop, validate, build, and export native slide projects.",
+  "license": "MIT",
+  "bin": {
+    "lattice": "./src/index.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@lattice/runtime": "*",
+    "vite": "^8.0.16"
+  }
+}
