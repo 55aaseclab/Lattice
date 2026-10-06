@@ -5,7 +5,7 @@ Lattice is an AI-native slide system. It owns how slides are created, laid out, 
 ```text
 slides business project
         ↓ package import
-@lattice/cli + @lattice/runtime
+@55aaseclab/lattice-cli + @55aaseclab/lattice-runtime
         ↓
 Reveal.js + HTML/CSS
 ```
@@ -13,7 +13,7 @@ Reveal.js + HTML/CSS
 Forbidden reverse dependency:
 
 ```text
-@lattice/runtime  ✕  slides/decks or slides/public
+@55aaseclab/lattice-runtime  ✕  business deck content or deck-owned assets
 ```
 
 ## Structure
@@ -21,8 +21,8 @@ Forbidden reverse dependency:
 ```text
 lattice/
 ├── packages/
-│   ├── runtime/     @lattice/runtime — grid, layout IR, primitives, themes, renderer, validator, deck loading
-│   └── cli/         @lattice/cli — init, dev, validate, build, export
+│   ├── runtime/     @55aaseclab/lattice-runtime — grid, layout IR, primitives, themes, renderer, validator, deck loading
+│   └── cli/         @55aaseclab/lattice-cli — init, dev, validate, build, export
 ├── examples/
 │   └── demo-deck/   minimal standard deck package example
 └── skills/
@@ -40,8 +40,8 @@ The monorepo builds and tests independently of any business repository.
 
 ## Packages
 
-- **@lattice/runtime** — 960×540 (or configurable) canvas, grid/area/row/column/span/gap/margin/padding primitives, nested grids, layout IR, the `simple-light` theme, HTML/CSS rendering with Reveal.js integration, layout/asset validation, and grid overlay debugging.
-- **@lattice/cli** — `lattice init`, `lattice dev`, `lattice validate`, `lattice build`, `lattice export`.
+- **@55aaseclab/lattice-runtime** — 960×540 (or configurable) canvas, grid/area/row/column/span/gap/margin/padding primitives, nested grids, layout IR, the `simple-light` theme, HTML/CSS rendering with Reveal.js integration, layout/asset validation, and grid overlay debugging.
+- **@55aaseclab/lattice-cli** — `lattice init`, `lattice dev`, `lattice validate`, `lattice build`, `lattice export`.
 
 ## Versioning
 

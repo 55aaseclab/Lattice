@@ -1,13 +1,13 @@
-# @lattice/cli
+# @55aaseclab/lattice-cli
 
-Command-line interface for Lattice native slide projects. The CLI only orchestrates: it loads the config and decks, then calls `@lattice/runtime` for validation and rendering.
+Command-line interface for Lattice native slide projects. The CLI only orchestrates: it loads the config and decks, then calls `@55aaseclab/lattice-runtime` for validation and rendering.
 
 ```text
 CLI command
     ↓
 load config / load deck
     ↓
-call @lattice/runtime
+call @55aaseclab/lattice-runtime
     ↓
 dev / validate / build / export
 ```
@@ -15,13 +15,13 @@ dev / validate / build / export
 ## Install
 
 ```sh
-npm install @lattice/cli
+npm install @55aaseclab/lattice-cli
 ```
 
 Or run it ad hoc:
 
 ```sh
-npx @lattice/cli init my-slides
+npx @55aaseclab/lattice-cli init my-slides
 ```
 
 ## Commands
@@ -53,7 +53,8 @@ my-slides/
 │       ├── layout.js
 │       ├── notes.js
 │       └── slides.js
-└── public/decks/demo/assets/
+        ├── assets/
+        └── references/
 ```
 
 ### `lattice dev`

@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
 import { loadConfig } from "../config/index.js";
-import { DECK_SCHEMA, RUNTIME_VERSION, validateAssets, validateLayoutGrids, validateManifest } from "@lattice/runtime";
+import { DECK_SCHEMA, RUNTIME_VERSION, validateAssets, validateLayoutGrids, validateManifest } from "@55aaseclab/lattice-runtime";
 
 export async function exportCommand({ args }) {
   const cwd = process.cwd();
@@ -67,6 +67,8 @@ export async function exportCommand({ args }) {
     : path.join(buildDir, "index.html");
   assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir });
   fs.rmSync(workDir, { recursive: true, force: true });
+  const exportRoot = path.dirname(workDir);
+  if (fs.readdirSync(exportRoot).length === 0) fs.rmdirSync(exportRoot);
 }
 
 async function loadRegistry(cwd, config) {
@@ -94,9 +96,9 @@ function deckStylesPath(cwd, config, deckId) {
 
 function writeStaticEntry(workDir, { theme, styles }) {
   const imports = [
-    `import "@lattice/runtime/themes/${theme}/styles.css";`,
+    `import "@55aaseclab/lattice-runtime/themes/${theme}/styles.css";`,
     ...(styles ? [`import ${JSON.stringify(path.relative(workDir, styles).split(path.sep).join("/"))};`] : []),
-    `import { bootStaticDeck } from "@lattice/runtime/renderer";`,
+    `import { bootStaticDeck } from "@55aaseclab/lattice-runtime/renderer";`,
     ``,
     `bootStaticDeck();`,
   ];
@@ -126,7 +128,12 @@ function writeStaticEntry(workDir, { theme, styles }) {
 function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir }) {
   const markupSlides = deck
     .buildSlides()
-    .map((markup) => markup.replaceAll(`/decks/${deckId}/`, "./assets/"));
+    .map((markup) =>
+      markup.replaceAll(
+        new RegExp(`/decks/${deckId}/(assets|references)/`, "g"),
+        "./$1/",
+      ),
+    );
 
   fs.rmSync(outDir, { recursive: true, force: true });
   fs.mkdirSync(outDir, { recursive: true });
@@ -135,9 +142,14 @@ function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir
   fs.mkdirSync(assetsDir, { recursive: true });
   fs.cpSync(path.join(path.dirname(builtEntry), "assets"), assetsDir, { recursive: true });
 
-  const deckAssetsSource = path.join(cwd, config.publicDir, "decks", deckId);
+  const deckAssetsSource = path.join(deckDir, "assets");
   if (fs.existsSync(deckAssetsSource)) {
     fs.cpSync(deckAssetsSource, assetsDir, { recursive: true });
+  }
+
+  const deckReferencesSource = path.join(deckDir, "references");
+  if (fs.existsSync(deckReferencesSource)) {
+    fs.cpSync(deckReferencesSource, path.join(outDir, "references"), { recursive: true });
   }
 
   const slides = markupSlides.map((markup, index) => {

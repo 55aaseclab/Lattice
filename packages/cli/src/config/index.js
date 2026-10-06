@@ -6,7 +6,6 @@ import { createRequire } from "node:module";
 export const DEFAULT_CONFIG = {
   title: "Slides",
   decksDir: "decks",
-  publicDir: "public",
   outDir: "dist",
   registry: "./decks/registry.js",
   theme: "simple-light",
@@ -29,6 +28,6 @@ export async function loadConfig(cwd = process.cwd()) {
 
 export function resolveRuntimeRoot(fromUrl = import.meta.url) {
   const require = createRequire(fromUrl);
-  const runtimeEntry = require.resolve("@lattice/runtime");
+  const runtimeEntry = require.resolve("@55aaseclab/lattice-runtime");
   return path.resolve(path.dirname(runtimeEntry), "..");
 }

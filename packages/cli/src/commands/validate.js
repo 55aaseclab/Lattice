@@ -10,13 +10,12 @@ import {
   validateGridPlacements,
   validateLayoutGrids,
   validateManifest,
-} from "@lattice/runtime";
+} from "@55aaseclab/lattice-runtime";
 
 export async function validateCommand({ args }) {
   const cwd = process.cwd();
   const config = await loadConfig(cwd);
   const decksDir = path.resolve(cwd, config.decksDir);
-  const publicDir = path.resolve(cwd, config.publicDir);
   const runtimeRoot = resolveRuntimeRoot();
   const errors = [];
 
@@ -28,7 +27,7 @@ export async function validateCommand({ args }) {
 
   const deckIds = args.deck ? [args.deck] : listDeckIds(decksDir);
   for (const deckId of deckIds) {
-    await validateDeck({ deckId, decksDir, publicDir, registry, themeTemplates, runtimeRoot, config, errors });
+    await validateDeck({ deckId, decksDir, registry, themeTemplates, runtimeRoot, config, errors });
   }
 
   if (errors.length > 0) {
@@ -78,7 +77,7 @@ async function loadThemeTemplates(runtimeRoot, theme, errors) {
   }
 }
 
-async function validateDeck({ deckId, decksDir, publicDir, registry, themeTemplates, runtimeRoot, config, errors }) {
+async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtimeRoot, config, errors }) {
   const deckDir = path.join(decksDir, deckId);
   const manifestPath = path.join(deckDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
@@ -129,7 +128,7 @@ async function validateDeck({ deckId, decksDir, publicDir, registry, themeTempla
       errors.push({ type: "missing-deck", message: `registry has no buildSlides for deck "${deckId}"` });
     } else {
       const markupSlides = runBuildSlides(deck, deckId, errors);
-      if (markupSlides) validateMarkupAssets({ deckId, markupSlides, publicDir, errors });
+      if (markupSlides) validateMarkupAssets({ deckId, deckDir, markupSlides, errors });
     }
   }
 }
@@ -152,7 +151,7 @@ function runBuildSlides(deck, deckId, errors) {
   }
 }
 
-function validateMarkupAssets({ deckId, markupSlides, publicDir, errors }) {
+function validateMarkupAssets({ deckId, deckDir, markupSlides, errors }) {
   const assetPattern = /(?:src|href)="((?:\.\/|\.\.\/|\/)[^"]+\.(?:png|jpe?g|svg|gif|webp|avif|mp4|webm|json))"/gi;
   const seen = new Set();
   let match;
@@ -161,8 +160,11 @@ function validateMarkupAssets({ deckId, markupSlides, publicDir, errors }) {
       const url = match[1];
       if (seen.has(url)) continue;
       seen.add(url);
-      const candidates = [url.startsWith("/") ? path.join(publicDir, url) : path.join(publicDir, "decks", deckId, url)];
-      if (!candidates.some((candidate) => fs.existsSync(candidate))) {
+      const deckPrefix = `/decks/${deckId}/`;
+      const relativeUrl = url.startsWith(deckPrefix) ? url.slice(deckPrefix.length) : url.replace(/^\.\//, "");
+      const candidate = path.resolve(deckDir, relativeUrl);
+      const isDeckPath = candidate === deckDir || candidate.startsWith(`${deckDir}${path.sep}`);
+      if (!isDeckPath || !fs.existsSync(candidate)) {
         errors.push({ type: "missing-asset", message: `deck "${deckId}": asset not found: ${url}` });
       }
     }

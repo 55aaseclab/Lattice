@@ -1,4 +1,4 @@
-import { simpleLightLayouts } from "@lattice/runtime/themes/simple-light";
+import { simpleLightLayouts } from "@55aaseclab/lattice-runtime/themes/simple-light";
 import content from "./content.js";
 import notes from "./notes.js";
 

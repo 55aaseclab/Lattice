@@ -1,11 +1,11 @@
-# @lattice/runtime
+# @55aaseclab/lattice-runtime
 
 The Lattice slide runtime. It defines how slides are created, laid out, validated, rendered, and exported. It does not contain business content, CLI argument parsing, or PPTX import/conversion.
 
 ```text
 slides business project
         ↓ package import
-@lattice/cli + @lattice/runtime
+@55aaseclab/lattice-cli + @55aaseclab/lattice-runtime
         ↓
 Reveal.js + HTML/CSS
 ```
@@ -39,9 +39,9 @@ deck content
 Business code must import through the package exports:
 
 ```js
-import { createDeck, createGrid, defineGrid } from "@lattice/runtime";
-import { simpleLightLayouts } from "@lattice/runtime/themes/simple-light";
-import { renderDeckApp, renderPresenterApp, bootStaticDeck } from "@lattice/runtime/renderer";
+import { createDeck, createGrid, defineGrid } from "@55aaseclab/lattice-runtime";
+import { simpleLightLayouts } from "@55aaseclab/lattice-runtime/themes/simple-light";
+import { renderDeckApp, renderPresenterApp, bootStaticDeck } from "@55aaseclab/lattice-runtime/renderer";
 ```
 
 Incorrect:

@@ -1,5 +1,5 @@
 {
-  "name": "@lattice/runtime",
+  "name": "@55aaseclab/lattice-runtime",
   "version": "0.1.0",
   "type": "module",
   "description": "Lattice slide runtime: grid system, layout IR, primitives, themes, HTML/CSS renderer, validator, and Reveal.js integration.",

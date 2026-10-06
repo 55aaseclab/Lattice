@@ -5,7 +5,7 @@ description: Use when creating or updating native Lattice slides. Build on the g
 
 # Lattice Slides Skill
 
-Use this skill for native slide work in Lattice business projects (for example a `slides/` project that depends on `@lattice/runtime` and `@lattice/cli`).
+Use this skill for native slide work in Lattice business projects (for example a `slides/` project that depends on `@55aaseclab/lattice-runtime` and `@55aaseclab/lattice-cli`).
 
 The current scope is intentionally limited to:
 
@@ -30,12 +30,12 @@ deck content and slide composition
 
 Keep these responsibilities separate:
 
-- `@lattice/runtime/grid`: canvas, grid cells, areas, spans, gaps, spacing, nested grids.
-- `@lattice/runtime/layout`: semantic slots, layout primitives, placement and relationships.
-- `@lattice/runtime/primitives`: text, image, diagram, card, quote, chart, table and other elements.
-- `@lattice/runtime/themes/simple-light`: typography, colors, borders, default spacing and visual treatment.
+- `@55aaseclab/lattice-runtime/grid`: canvas, grid cells, areas, spans, gaps, spacing, nested grids.
+- `@55aaseclab/lattice-runtime/layout`: semantic slots, layout primitives, placement and relationships.
+- `@55aaseclab/lattice-runtime/primitives`: text, image, diagram, card, quote, chart, table and other elements.
+- `@55aaseclab/lattice-runtime/themes/simple-light`: typography, colors, borders, default spacing and visual treatment.
 - `decks/<deck>`: business content, layout intent and speaker notes.
-- `@lattice/cli`: init, dev, validate, build and export.
+- `@55aaseclab/lattice-cli`: init, dev, validate, build and export.
 
 The grid system is foundational. A template or theme must compose grid areas; it must not become a second positioning system.
 
@@ -49,11 +49,11 @@ Before editing, identify the requested route:
 Inspect the relevant files before changing them:
 
 1. The active deck under `decks/`.
-2. The grid and layout primitives exposed by `@lattice/runtime`.
-3. The active theme under `@lattice/runtime/themes/simple-light/`.
+2. The grid and layout primitives exposed by `@55aaseclab/lattice-runtime`.
+3. The active theme under `@55aaseclab/lattice-runtime/themes/simple-light/`.
 4. The deck's content, layout and notes data.
 
-Do not introduce a new theme or an independent layout engine unless the user explicitly requests it. Import only through package exports (`@lattice/runtime`, `@lattice/runtime/layout`, `@lattice/runtime/themes/simple-light`), never through private package paths.
+Do not introduce a new theme or an independent layout engine unless the user explicitly requests it. Import only through package exports (`@55aaseclab/lattice-runtime`, `@55aaseclab/lattice-runtime/layout`, `@55aaseclab/lattice-runtime/themes/simple-light`), never through private package paths.
 
 ## Grid-First Placement
 
@@ -189,10 +189,10 @@ decks/<deck-id>/
 Assets belong with the deck package, not in the theme:
 
 ```text
-public/decks/<deck-id>/assets/
+decks/<deck-id>/assets/
 ```
 
-Do not put business text, deck-specific images or deck-specific narrative rules into `@lattice/runtime` or its themes. The runtime must not reference business decks or business public assets.
+Do not put business text, deck-specific images or deck-specific narrative rules into `@55aaseclab/lattice-runtime` or its themes. The runtime must not reference business decks or business public assets.
 
 ## Validation and Visual Verification
 

@@ -36,10 +36,10 @@ export async function initCommand({ args, rest }) {
       preview: "lattice preview",
     },
     dependencies: {
-      "@lattice/runtime": runtimeDep,
+      "@55aaseclab/lattice-runtime": runtimeDep,
     },
     devDependencies: {
-      "@lattice/cli": cliDep,
+      "@55aaseclab/lattice-cli": cliDep,
     },
   };
   fs.writeFileSync(path.join(targetDir, "package.json"), `${JSON.stringify(packageJson, null, 2)}\n`);

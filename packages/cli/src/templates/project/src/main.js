@@ -1,5 +1,5 @@
-import { renderDeckApp, renderPresenterApp } from "@lattice/runtime/renderer";
-import { validateLayoutGrids } from "@lattice/runtime/layout";
+import { renderDeckApp, renderPresenterApp } from "@55aaseclab/lattice-runtime/renderer";
+import { validateLayoutGrids } from "@55aaseclab/lattice-runtime/layout";
 import { deckList, deckRegistry } from "../decks/registry.js";
 
 const appElement = document.querySelector("#app");
