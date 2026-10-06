@@ -30,5 +30,5 @@ export async function loadConfig(cwd = process.cwd()) {
 export function resolveRuntimeRoot(fromUrl = import.meta.url) {
   const require = createRequire(fromUrl);
   const runtimeEntry = require.resolve("@lattice/runtime");
-  return path.resolve(path.dirname(runtimeEntry), "..", "..");
+  return path.resolve(path.dirname(runtimeEntry), "..");
 }

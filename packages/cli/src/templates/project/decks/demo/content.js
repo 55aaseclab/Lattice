@@ -13,6 +13,7 @@ export default {
     {
       id: "image-text",
       title: "Images Live in Areas Too",
+      figure: "/decks/demo/assets/lattice-grid.svg",
       text: "Give an image a grid area and a fit mode (cover, contain, or stretch). Assets belong with the deck package, never inside the runtime.",
     },
   ],

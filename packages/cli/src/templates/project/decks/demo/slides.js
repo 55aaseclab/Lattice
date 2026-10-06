@@ -2,9 +2,6 @@ import { simpleLightLayouts } from "@lattice/runtime/themes/simple-light";
 import content from "./content.js";
 import notes from "./notes.js";
 
-const deckId = "demo";
-const asset = (path) => `/decks/${deckId}/${path}`;
-
 function withSlideNumber(slideNumber, slideMarkup, note = "") {
   return slideMarkup
     .replace('<section class="slide-canvas ', `<section data-slide-number="${slideNumber}" class="slide-canvas `)
@@ -14,10 +11,10 @@ function withSlideNumber(slideNumber, slideMarkup, note = "") {
     );
 }
 
-function renderImageTextFigure() {
+function renderImageTextFigure(figureUrl) {
   return `
     <div class="demo-figure">
-      <img src="${asset("assets/lattice-grid.svg")}" alt="Lattice 12x8 grid diagram" />
+      <img src="${figureUrl}" alt="Lattice 12x8 grid diagram" />
     </div>
   `;
 }
@@ -47,7 +44,7 @@ export function buildSlides() {
       3,
       simpleLightLayouts.titleBodySplit({
         title: byId["image-text"].title,
-        left: renderImageTextFigure(),
+        left: renderImageTextFigure(byId["image-text"].figure),
         right: `<p>${byId["image-text"].text}</p>`,
       }),
       note("image-text"),

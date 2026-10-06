@@ -1,4 +1,4 @@
-import { SLIDE_CANVAS.width } from "../grid/index.js";
+import { SLIDE_CANVAS } from "../grid/index.js";
 
 export function initSlideEditor(rootElement, deckId) {
   const storageKey = `slides-editor-edits:${deckId}`;

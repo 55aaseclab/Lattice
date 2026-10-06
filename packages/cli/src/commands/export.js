@@ -52,9 +52,9 @@ export async function exportCommand({ args }) {
 
   console.log("[lattice] building static deck entry (vite build)...");
   await build({
-    root: cwd,
+    root: workDir,
     base: "./",
-    publicDir: path.resolve(cwd, config.publicDir),
+    publicDir: false,
     build: {
       outDir: buildDir,
       emptyOutDir: true,
@@ -62,7 +62,10 @@ export async function exportCommand({ args }) {
     },
   });
 
-  assembleOutput({ cwd, config, deckId, deck, deckDir, buildDir, outDir });
+  const builtEntry = fs.existsSync(path.join(buildDir, "entry.html"))
+    ? path.join(buildDir, "entry.html")
+    : path.join(buildDir, "index.html");
+  assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir });
   fs.rmSync(workDir, { recursive: true, force: true });
 }
 
@@ -120,7 +123,7 @@ function writeStaticEntry(workDir, { theme, styles }) {
   );
 }
 
-function assembleOutput({ cwd, config, deckId, deck, deckDir, buildDir, outDir }) {
+function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir }) {
   const markupSlides = deck
     .buildSlides()
     .map((markup) => markup.replaceAll(`/decks/${deckId}/`, "./assets/"));
@@ -130,7 +133,7 @@ function assembleOutput({ cwd, config, deckId, deck, deckDir, buildDir, outDir }
 
   const assetsDir = path.join(outDir, "assets");
   fs.mkdirSync(assetsDir, { recursive: true });
-  fs.cpSync(path.join(buildDir, "assets"), assetsDir, { recursive: true });
+  fs.cpSync(path.join(path.dirname(builtEntry), "assets"), assetsDir, { recursive: true });
 
   const deckAssetsSource = path.join(cwd, config.publicDir, "decks", deckId);
   if (fs.existsSync(deckAssetsSource)) {
@@ -177,7 +180,7 @@ function assembleOutput({ cwd, config, deckId, deck, deckDir, buildDir, outDir }
   fs.writeFileSync(path.join(outDir, "layout.json"), JSON.stringify(layout, null, 2));
   fs.writeFileSync(path.join(outDir, "notes.json"), JSON.stringify(notes, null, 2));
   fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
-  fs.copyFileSync(path.join(buildDir, "entry.html"), path.join(outDir, "index.html"));
+  fs.copyFileSync(builtEntry, path.join(outDir, "index.html"));
 
   const assetReport = validateAssets(markupSlides, {
     exists: (url) => fs.existsSync(path.join(outDir, url.replace(/^\.\//, ""))),

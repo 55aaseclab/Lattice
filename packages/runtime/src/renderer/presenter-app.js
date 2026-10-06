@@ -1,5 +1,5 @@
 import { createDeckSync } from "./core.js";
-import { SLIDE_CANVAS.width, SLIDE_CANVAS.height } from "../grid/index.js";
+import { SLIDE_CANVAS } from "../grid/index.js";
 
 export function renderPresenterApp(container, deckDefinition) {
   const slidesMarkup = deckDefinition.buildSlides();

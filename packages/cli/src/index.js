@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { initCommand } from "./commands/init.js";
 import { devCommand } from "./commands/dev.js";
 import { buildCommand } from "./commands/build.js";
