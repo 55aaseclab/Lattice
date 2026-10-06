@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { createServer } from "vite";
 import { loadConfig, resolveRuntimeRoot } from "../config/index.js";
 import {
   DECK_SCHEMA,
@@ -54,8 +55,17 @@ async function loadRegistry(cwd, config, errors) {
     return null;
   }
   try {
-    const module = await import(pathToFileURL(registryPath).href);
-    return module.deckRegistry ?? null;
+    const server = await createServer({
+      root: cwd,
+      appType: "custom",
+      server: { middlewareMode: true },
+    });
+    try {
+      const module = await server.ssrLoadModule(`/${path.relative(cwd, registryPath).split(path.sep).join("/")}`);
+      return module.deckRegistry ?? null;
+    } finally {
+      await server.close();
+    }
   } catch (error) {
     errors.push({ type: "registry-import-failed", message: `${config.registry}: ${error.message}` });
     return null;

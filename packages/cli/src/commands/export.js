@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
-import { build } from "vite";
+import { build, createServer } from "vite";
 import { loadConfig } from "../config/index.js";
 import { DECK_SCHEMA, RUNTIME_VERSION, validateAssets, validateLayoutGrids, validateManifest } from "@55aaseclab/lattice-runtime";
 
@@ -75,8 +74,17 @@ async function loadRegistry(cwd, config) {
   if (!config.registry) return null;
   const registryPath = path.resolve(cwd, config.registry);
   if (!fs.existsSync(registryPath)) return null;
-  const module = await import(pathToFileURL(registryPath).href);
-  return module.deckRegistry ?? null;
+  const server = await createServer({
+    root: cwd,
+    appType: "custom",
+    server: { middlewareMode: true },
+  });
+  try {
+    const module = await server.ssrLoadModule(`/${path.relative(cwd, registryPath).split(path.sep).join("/")}`);
+    return module.deckRegistry ?? null;
+  } finally {
+    await server.close();
+  }
 }
 
 function manifestTheme(deckDir, fallbackTheme) {

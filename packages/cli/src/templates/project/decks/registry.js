@@ -1,6 +1,4 @@
-if (typeof document !== "undefined") {
-  import("@55aaseclab/lattice-runtime/themes/simple-light/styles.css");
-}
+import "@55aaseclab/lattice-runtime/themes/simple-light/styles.css";
 import { buildSlides as buildDemoSlides } from "./demo/slides.js";
 
 export const deckRegistry = {
