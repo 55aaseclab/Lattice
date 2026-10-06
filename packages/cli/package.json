@@ -1,6 +1,6 @@
 {
   "name": "@55aaseclab/lattice-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Lattice CLI: initialize, develop, validate, build, and export native slide projects.",
   "license": "MIT",
@@ -23,7 +23,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@55aaseclab/lattice-runtime": "^0.1.0",
+    "@55aaseclab/lattice-runtime": "^0.1.1",
     "vite": "^8.0.16"
   }
 }

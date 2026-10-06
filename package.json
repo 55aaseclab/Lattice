@@ -1,6 +1,6 @@
 {
   "name": "lattice",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Lattice native slide system: how to create, lay out, validate, render, and export slides.",
@@ -18,6 +18,6 @@
   },
   "dependencies": {
     "@55aaseclab/lattice-cli": "^0.1.0",
-    "@55aaseclab/lattice-runtime": "^0.1.0"
+    "@55aaseclab/lattice-runtime": "^0.1.1"
   }
 }
