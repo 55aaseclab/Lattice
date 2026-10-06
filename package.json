@@ -15,5 +15,9 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@55aaseclab/lattice-cli": "^0.1.0",
+    "@55aaseclab/lattice-runtime": "^0.1.0"
   }
 }
