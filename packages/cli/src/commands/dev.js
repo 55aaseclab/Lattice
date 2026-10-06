@@ -25,6 +25,8 @@ const mimeTypes = {
   ".woff2": "font/woff2",
 };
 
+const moduleExtensions = new Set([".js", ".mjs", ".cjs", ".css", ".html", ".json"]);
+
 function deckAssetsPlugin(cwd, decksDir) {
   const root = path.resolve(cwd, decksDir);
   return {
@@ -36,6 +38,10 @@ function deckAssetsPlugin(cwd, decksDir) {
         if (filePath !== root && !filePath.startsWith(root + path.sep)) {
           res.statusCode = 403;
           res.end();
+          return;
+        }
+        if (moduleExtensions.has(path.extname(filePath).toLowerCase())) {
+          next();
           return;
         }
         if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
