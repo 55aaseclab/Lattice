@@ -4,6 +4,14 @@
   "type": "module",
   "description": "Lattice slide runtime: grid system, layout IR, primitives, themes, HTML/CSS renderer, validator, and Reveal.js integration.",
   "license": "MIT",
+  "files": [
+    "src/",
+    "themes/",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": "./src/index.js",
     "./grid": "./src/grid/index.js",

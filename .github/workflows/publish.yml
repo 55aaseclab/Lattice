@@ -1,0 +1,113 @@
+name: Publish npm packages
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish Lattice packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Verify tag and package versions
+        id: release
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME (expected v<semver>)" >&2
+            exit 1
+          fi
+
+          runtime_version="$(node -p "require('./packages/runtime/package.json').version")"
+          cli_version="$(node -p "require('./packages/cli/package.json').version")"
+          cli_runtime_range="$(node -p "require('./packages/cli/package.json').dependencies['@55aaseclab/lattice-runtime']")"
+
+          if [[ "$runtime_version" != "$version" || "$cli_version" != "$version" ]]; then
+            echo "Tag/package version mismatch:" >&2
+            echo "  tag:     $version" >&2
+            echo "  runtime: $runtime_version" >&2
+            echo "  cli:     $cli_version" >&2
+            exit 1
+          fi
+
+          if [[ "$cli_runtime_range" != "^$version" ]]; then
+            echo "CLI runtime dependency $cli_runtime_range does not match release ^$version" >&2
+            exit 1
+          fi
+
+          if [[ "$version" == *-* ]]; then
+            dist_tag="next"
+          else
+            dist_tag="latest"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Inspect package contents
+        run: |
+          npm pack --dry-run --workspace @55aaseclab/lattice-runtime
+          npm pack --dry-run --workspace @55aaseclab/lattice-cli
+
+      - name: Publish runtime if absent
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: |
+          if npm view "@55aaseclab/lattice-runtime@$VERSION" version >/dev/null 2>&1; then
+            echo "@55aaseclab/lattice-runtime@$VERSION already exists; skipping"
+          else
+            npm publish \
+              --workspace @55aaseclab/lattice-runtime \
+              --access public \
+              --provenance \
+              --tag "$DIST_TAG"
+          fi
+
+      - name: Publish CLI if absent
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: |
+          if npm view "@55aaseclab/lattice-cli@$VERSION" version >/dev/null 2>&1; then
+            echo "@55aaseclab/lattice-cli@$VERSION already exists; skipping"
+          else
+            npm publish \
+              --workspace @55aaseclab/lattice-cli \
+              --access public \
+              --provenance \
+              --tag "$DIST_TAG"
+          fi

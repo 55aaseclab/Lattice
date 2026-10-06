@@ -4,6 +4,13 @@
   "type": "module",
   "description": "Lattice CLI: initialize, develop, validate, build, and export native slide projects.",
   "license": "MIT",
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "lattice": "./src/index.js"
   },
@@ -11,7 +18,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@55aaseclab/lattice-runtime": "*",
+    "@55aaseclab/lattice-runtime": "^0.1.0",
     "vite": "^8.0.16"
   }
 }
