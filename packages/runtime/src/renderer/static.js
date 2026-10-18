@@ -24,6 +24,8 @@ export async function bootStaticDeck({ container = "#app" } = {}) {
   const deckDefinition = {
     id: content.id || manifest.id,
     title: content.title || manifest.id,
+    owner: manifest.owner || "",
+    presenter: content.presenter || manifest.presenter || "",
     description: content.description || "",
     buildSlides: () => content.slides.map((slide) => slide.html),
   };

@@ -9,6 +9,10 @@ function packageFrom(dir) {
   return JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
 }
 
+function manifestFrom(dir) {
+  return JSON.parse(fs.readFileSync(path.join(dir, "decks", "demo", "manifest.json"), "utf8"));
+}
+
 test("init uses registry semver dependencies by default", async () => {
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), "lattice-init-"));
   const target = path.join(parent, "registry-project");
@@ -19,6 +23,8 @@ test("init uses registry semver dependencies by default", async () => {
   assert.equal(packageJson.devDependencies["@55aaseclab/lattice-cli"], "^0.1.2");
   assert.equal(Object.values(packageJson.dependencies).some((value) => value.startsWith("file:")), false);
   assert.equal(Object.values(packageJson.devDependencies).some((value) => value.startsWith("file:")), false);
+  assert.equal(manifestFrom(target).owner, "your-handle");
+  assert.equal(manifestFrom(target).presenter, "Your Name");
 });
 
 test("init supports explicit local monorepo dependencies", async () => {

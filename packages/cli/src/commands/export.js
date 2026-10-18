@@ -134,6 +134,10 @@ function writeStaticEntry(workDir, { theme, styles }) {
 }
 
 function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir }) {
+  const sourceManifestPath = path.join(deckDir, "manifest.json");
+  const sourceManifest = fs.existsSync(sourceManifestPath)
+    ? JSON.parse(fs.readFileSync(sourceManifestPath, "utf8"))
+    : {};
   const markupSlides = deck
     .buildSlides()
     .map((markup) =>
@@ -183,6 +187,8 @@ function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir
     schema: DECK_SCHEMA,
     id: deck.id,
     title: deck.title,
+    ...(sourceManifest.owner ? { owner: sourceManifest.owner } : {}),
+    ...(sourceManifest.presenter ? { presenter: sourceManifest.presenter } : {}),
     runtime: RUNTIME_VERSION,
     theme: manifestTheme(deckDir, config.theme),
     entry: {
@@ -195,7 +201,13 @@ function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir
 
   fs.writeFileSync(
     path.join(outDir, "content.json"),
-    JSON.stringify({ id: deck.id, title: deck.title, description: deck.description, slides }, null, 2),
+    JSON.stringify({
+      id: deck.id,
+      title: deck.title,
+      ...(sourceManifest.presenter ? { presenter: sourceManifest.presenter } : {}),
+      description: deck.description,
+      slides,
+    }, null, 2),
   );
   fs.writeFileSync(path.join(outDir, "layout.json"), JSON.stringify(layout, null, 2));
   fs.writeFileSync(path.join(outDir, "notes.json"), JSON.stringify(notes, null, 2));

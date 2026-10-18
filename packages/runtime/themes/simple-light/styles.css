@@ -7,6 +7,16 @@
   --body-color: #595959;
   --panel-color: #eeeeee;
   --guide-color: #dcdcdc;
+  --table-font-size: 16px;
+  --table-caption-font-size: 14px;
+  --table-caption-gap: 6px;
+  --table-cell-padding: 8px 12px;
+  --table-compact-font-size: 14px;
+  --table-compact-cell-padding: 4px 8px;
+  --table-border-color: var(--guide-color);
+  --table-header-bg: var(--panel-color);
+  --figure-caption-font-size: 13px;
+  --figure-caption-gap: 6px;
   --layout-edge: 33px;
   --layout-title-width: 895px;
   --layout-title-top: 47px;
@@ -179,33 +189,129 @@ body {
   height: 100%;
 }
 
-.sl-grid-cell.sl-fit-contain img,
-.sl-grid-cell.sl-fit-contain svg,
-.sl-grid-cell.sl-fit-contain canvas,
-.sl-grid-cell.sl-fit-contain video {
+.sl-grid > :is(.ph, .sl-grid-cell):is(.slide-fit-contain, .slide-fit-cover, .slide-fit-stretch) {
+  overflow: hidden;
+}
+
+.sl-grid > :is(.ph, .sl-grid-cell):is(.slide-fit-contain, .slide-fit-cover, .slide-fit-stretch) > :is(img, svg, canvas, video) {
   display: block;
   width: 100%;
   height: 100%;
+  max-width: none;
+  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+}
+
+.sl-grid > :is(.ph, .sl-grid-cell):is(.slide-fit-contain, .slide-fit-cover, .slide-fit-stretch) > table {
+  width: 100%;
+  margin: 0;
+}
+
+.sl-grid > :is(.ph, .sl-grid-cell).slide-fit-contain > :is(img, svg, canvas, video) {
   object-fit: contain;
 }
 
-.sl-grid-cell.sl-fit-cover img,
-.sl-grid-cell.sl-fit-cover svg,
-.sl-grid-cell.sl-fit-cover canvas,
-.sl-grid-cell.sl-fit-cover video {
-  display: block;
-  width: 100%;
-  height: 100%;
+.sl-grid > :is(.ph, .sl-grid-cell).slide-fit-cover > :is(img, svg, canvas, video) {
   object-fit: cover;
 }
 
-.sl-grid-cell.sl-fit-stretch img,
-.sl-grid-cell.sl-fit-stretch svg,
-.sl-grid-cell.sl-fit-stretch canvas,
-.sl-grid-cell.sl-fit-stretch video {
+.sl-grid > :is(.ph, .sl-grid-cell).slide-fit-stretch > :is(img, svg, canvas, video) {
+  object-fit: fill;
+}
+
+.slide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--table-font-size);
+  color: var(--body-color);
+}
+
+.slide-table caption {
+  caption-side: top;
+  text-align: left;
+  font-size: var(--table-caption-font-size);
+  color: var(--body-color);
+  padding-bottom: var(--table-caption-gap);
+}
+
+.slide-table th,
+.slide-table td {
+  border: 1px solid var(--table-border-color);
+  padding: var(--table-cell-padding);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Reveal removes the last body row's bottom border in its base theme. */
+.reveal .slide-table tbody tr:last-child th,
+.reveal .slide-table tbody tr:last-child td {
+  border-bottom: 1px solid var(--table-border-color);
+}
+
+.slide-table thead th {
+  background: var(--table-header-bg);
+  font-weight: 600;
+}
+
+.slide-table-compact th,
+.slide-table-compact td {
+  padding: var(--table-compact-cell-padding);
+  font-size: var(--table-compact-font-size);
+}
+
+.slide-figure {
+  margin: 0;
+  text-align: center;
+}
+
+.slide-figure img {
   display: block;
+  margin: 0;
+  max-width: 100%;
+}
+
+.slide-figure figcaption {
+  font-size: var(--figure-caption-font-size);
+  color: var(--body-color);
+  margin-top: var(--figure-caption-gap);
+}
+
+.slide-figure.slide-fit-contain,
+.slide-figure.slide-fit-cover,
+.slide-figure.slide-fit-stretch {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+}
+
+.slide-figure.slide-fit-contain img,
+.slide-figure.slide-fit-cover img,
+.slide-figure.slide-fit-stretch img {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  max-width: none;
+  max-height: none;
+}
+
+.slide-figure.slide-fit-contain img {
+  object-fit: contain;
+}
+
+.slide-figure.slide-fit-cover img {
+  object-fit: cover;
+}
+
+.slide-figure.slide-fit-stretch img {
+  object-fit: fill;
 }
 
 .sl-grid-overlay {

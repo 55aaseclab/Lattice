@@ -67,6 +67,12 @@ export function validateManifest(manifest, { expectedId = "", runtimeVersion = R
   if (typeof manifest.title !== "string" || manifest.title === "") {
     errors.push({ type: "invalid-manifest", message: "manifest.title must be a non-empty string" });
   }
+  if (manifest.owner !== undefined && (typeof manifest.owner !== "string" || manifest.owner.trim() === "")) {
+    errors.push({ type: "invalid-manifest", message: "manifest.owner must be a non-empty string when provided" });
+  }
+  if (manifest.presenter !== undefined && (typeof manifest.presenter !== "string" || manifest.presenter.trim() === "")) {
+    errors.push({ type: "invalid-manifest", message: "manifest.presenter must be a non-empty string when provided" });
+  }
   if (!isRuntimeCompatible(manifest.runtime, runtimeVersion)) {
     errors.push({
       type: "runtime-incompatible",

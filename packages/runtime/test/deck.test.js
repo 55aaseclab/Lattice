@@ -6,6 +6,8 @@ const validManifest = {
   schema: DECK_SCHEMA,
   id: "demo",
   title: "Demo Deck",
+  owner: "deck-owner",
+  presenter: "Demo Presenter",
   runtime: "^0.1.0",
   theme: "simple-light",
   entry: {
@@ -30,6 +32,23 @@ test("isRuntimeCompatible handles caret ranges on 0.x", () => {
 
 test("validateManifest accepts a valid manifest", () => {
   assert.deepEqual(validateManifest(validManifest), { ok: true, errors: [] });
+});
+
+test("validateManifest accepts manifests without ownership metadata for backwards compatibility", () => {
+  const { owner, presenter, ...legacyManifest } = validManifest;
+  assert.deepEqual(validateManifest(legacyManifest), { ok: true, errors: [] });
+});
+
+test("validateManifest rejects an invalid presenter", () => {
+  const report = validateManifest({ ...validManifest, presenter: " " });
+  assert.equal(report.ok, false);
+  assert.ok(report.errors.some((error) => error.message.includes("manifest.presenter")));
+});
+
+test("validateManifest rejects an invalid owner", () => {
+  const report = validateManifest({ ...validManifest, owner: [] });
+  assert.equal(report.ok, false);
+  assert.ok(report.errors.some((error) => error.message.includes("manifest.owner")));
 });
 
 test("validateManifest rejects unsupported schemas", () => {

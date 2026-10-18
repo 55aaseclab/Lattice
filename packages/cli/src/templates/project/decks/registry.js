@@ -5,6 +5,8 @@ export const deckRegistry = {
   demo: {
     id: "demo",
     title: "My First Lattice Deck",
+    owner: "your-handle",
+    presenter: "Your Name",
     description: "Generated with Lattice",
     buildSlides: buildDemoSlides,
   },

@@ -7,12 +7,68 @@ import {
 } from "../grid/index.js";
 import { validateGridPlacements } from "../validator/index.js";
 
+const escapeHtml = (value) =>
+  String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
+
+const standardFits = new Set(["contain", "cover", "stretch"]);
+
+const assertArray = (value, name) => {
+  if (!Array.isArray(value)) {
+    throw new TypeError(`[lattice-primitives] ${name} must be an array`);
+  }
+};
+
+const assertNonEmptyString = (value, name) => {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new TypeError(`[lattice-primitives] ${name} must be a non-empty string`);
+  }
+};
+
+const fitClass = (fit, name) => {
+  if (fit !== "" && !standardFits.has(fit)) {
+    throw new TypeError(`[lattice-primitives] ${name}.fit must be contain, cover, or stretch`);
+  }
+  return fit ? `slide-fit-${fit}` : "";
+};
+
+const tableCellContent = (value) => {
+  if (value === null || value === undefined) return "";
+  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  throw new TypeError("[lattice-primitives] table cell value must be a string, number, or boolean");
+};
+
+const tableCellMarkup = (tag, cell) => {
+  const isDescriptor =
+    cell !== null &&
+    typeof cell === "object" &&
+    !Array.isArray(cell) &&
+    Object.hasOwn(cell, "value");
+  if (isDescriptor) {
+    const { value, colspan, rowspan, scope = "" } = cell;
+    const spanAttrs = [
+      Number.isInteger(colspan) && colspan > 1 ? ` colspan="${colspan}"` : "",
+      Number.isInteger(rowspan) && rowspan > 1 ? ` rowspan="${rowspan}"` : "",
+      tag === "th" && scope ? ` scope="${escapeHtml(scope)}"` : "",
+    ].join("");
+    return `<${tag}${spanAttrs}>${tableCellContent(value)}</${tag}>`;
+  }
+  return `<${tag}>${tableCellContent(cell)}</${tag}>`;
+};
+
 export function createPrimitives({ textboxClass = "slide-textbox", groupClass = "slide-group" } = {}) {
   const styleAttrs = (styles = {}) =>
     Object.entries(styles)
       .filter(([, value]) => value !== "" && value !== null && value !== void 0)
       .map(([key, value]) => `${key}: ${value}`)
       .join("; ");
+
+  const nameAttr = (name) => (name ? ` data-inspector-name="${escapeHtml(name)}"` : "");
 
   const positioned = ({
     anchor = "center",
@@ -23,6 +79,7 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
     insetY = 17,
     width = "",
     maxWidth = "",
+    name = "",
   }) => {
     const regionClasses = ["sl-positioned", `sl-region-${region}`]
       .filter(Boolean)
@@ -38,7 +95,7 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
     });
     return `
       <div class="${regionClasses}">
-        <div class="${contentClasses}" ${style ? `style="${style}"` : ""}>
+        <div class="${contentClasses}"${nameAttr(name)} ${style ? `style="${style}"` : ""}>
           ${content}
         </div>
       </div>
@@ -55,17 +112,45 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
       `;
     },
 
-    textbox({ body, className = "" }) {
+    textbox({ body, className = "", name = "" }) {
       const classes = [textboxClass, className].filter(Boolean).join(" ");
       return `
-        <div class="${classes}">
+        <div class="${classes}"${nameAttr(name)}>
           ${body}
         </div>
       `;
     },
 
-    positioned({ body, anchor = "center", region = "body-full", className = "", insetX = 18, insetY = 17, width = "", maxWidth = "" }) {
-      return positioned({ anchor, region, content: body, className, insetX, insetY, width, maxWidth });
+    table({ head = [], rows = [], caption = "", compact = false, className = "", name = "" }) {
+      assertArray(head, "table.head");
+      assertArray(rows, "table.rows");
+      rows.forEach((row, index) => assertArray(row, `table.rows[${index}]`));
+      const classes = ["slide-table", compact ? "slide-table-compact" : "", className].filter(Boolean).join(" ");
+      const captionMarkup = caption ? `<caption>${caption}</caption>` : "";
+      const headMarkup = head.length
+        ? `<thead><tr>${head.map((cell) => tableCellMarkup("th", cell)).join("")}</tr></thead>`
+        : "";
+      const bodyMarkup = `<tbody>${rows
+        .map((row) => `<tr>${row.map((cell) => tableCellMarkup("td", cell)).join("")}</tr>`)
+        .join("")}</tbody>`;
+      return `<table class="${classes}"${nameAttr(name)}>${captionMarkup}${headMarkup}${bodyMarkup}</table>`;
+    },
+
+    image({ src, alt = "", fit = "", width = "", height = "", ratio = "", caption = "", className = "", name = "" }) {
+      assertNonEmptyString(src, "image.src");
+      const classes = ["slide-figure", fitClass(fit, "image"), className].filter(Boolean).join(" ");
+      const imgStyle = styleAttrs({
+        width: typeof width === "number" ? `${width}px` : width,
+        height: typeof height === "number" ? `${height}px` : height,
+        "aspect-ratio": ratio,
+      });
+      const img = `<img src="${src}" alt="${alt}"${imgStyle ? ` style="${imgStyle}"` : ""}>`;
+      const captionMarkup = caption ? `<figcaption>${caption}</figcaption>` : "";
+      return `<figure class="${classes}"${nameAttr(name)}>${img}${captionMarkup}</figure>`;
+    },
+
+    positioned({ body, anchor = "center", region = "body-full", className = "", insetX = 18, insetY = 17, width = "", maxWidth = "", name = "" }) {
+      return positioned({ anchor, region, content: body, className, insetX, insetY, width, maxWidth, name });
     },
 
     positionedTextbox({ body, anchor = "center", region = "body-full", className = "", insetX = 18, insetY = 17, width = "", maxWidth = "" }) {
@@ -102,7 +187,7 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
       }
       const cellMarkup = cells
         .map(({ area = "", col, row, colSpan = 1, rowSpan = 1, content = "", cellClassName = "", fit = "", style = "" }) => {
-          const classes = ["sl-grid-cell", fit ? `sl-fit-${fit}` : "", cellClassName].filter(Boolean).join(" ");
+          const classes = ["sl-grid-cell", fitClass(fit, "grid cell"), cellClassName].filter(Boolean).join(" ");
           const placement = area ? gridAreaStyle(area) : gridPlacementStyle({ col, row, colSpan, rowSpan });
           return `
             <div class="${classes}" style="${[placement, style].filter(Boolean).join("; ")}">
@@ -120,7 +205,7 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
     },
 
     gridCell({ area = "", col, row, colSpan = 1, rowSpan = 1, content = "", className = "", fit = "", style = "" }) {
-      const classes = ["sl-grid-cell", fit ? `sl-fit-${fit}` : "", className].filter(Boolean).join(" ");
+      const classes = ["sl-grid-cell", fitClass(fit, "grid cell"), className].filter(Boolean).join(" ");
       const placement = area ? gridAreaStyle(area) : gridPlacementStyle({ col, row, colSpan, rowSpan });
       return `
         <div class="${classes}" style="${[placement, style].filter(Boolean).join("; ")}">

@@ -28,7 +28,7 @@ deck content
 
 - `src/grid`: 960×540 (or configurable) canvas, columns/rows, tracks, gap, margin, padding, named areas, spans, nested grids, deterministic placement-to-pixel math, and the debug overlay renderer.
 - `src/layout`: layout IR (`layoutGrids`, `blueprintGrid`), semantic slot assembler with injectable theme classes.
-- `src/primitives`: `createPrimitives` factory — textbox, group, positioned, grid, gridCell with `fit` and nested-grid support.
+- `src/primitives`: `createPrimitives` factory — textbox, group, table, image, positioned, grid, and gridCell with `fit` and nested-grid support.
 - `src/renderer`: HTML/CSS renderers, deck app and presenter views, interactive chart initializers, slide editor, and the static single-deck bootstrap.
 - `src/validator`: out-of-bounds, overlap, illegal placement, and missing-asset checks.
 - `src/deck`: standard deck package schema (`lattice.deck.v1`), runtime compatibility checks, and deck package loading.
@@ -62,6 +62,25 @@ decks/<deck-id>/
 ```
 
 See `examples/demo-deck` for a minimal example. The runtime loads the manifest, checks `schema` and `runtime` compatibility, and imports the declared entries.
+
+Deck manifests may declare non-empty `owner` and `presenter` strings. Image and grid-cell fit modes use the shared `slide-fit-contain`, `slide-fit-cover`, and `slide-fit-stretch` theme classes, so the grid continues to own placement while the primitive only controls how its content fills that area.
+
+```js
+const table = blocks.table({
+  head: ["Case", "Passed"],
+  rows: [["Bounds", "Yes"]],
+  caption: "Validation results",
+});
+
+const image = blocks.image({
+  src: "/decks/demo/assets/result.png",
+  alt: "Validation chart",
+  fit: "contain",
+  ratio: "16 / 9",
+});
+```
+
+Table cells accept plain values or `{ value, colspan, rowspan, scope }` objects. Primitive content is treated as authored HTML, consistent with the existing textbox and layout APIs; callers must escape untrusted data before passing it in.
 
 ## Development
 

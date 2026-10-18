@@ -60,6 +60,14 @@ export function renderDeckApp(container, deckDefinition) {
               <dd id="meta-deck-description">-</dd>
             </div>
             <div>
+              <dt>Presenter</dt>
+              <dd id="meta-deck-presenter">-</dd>
+            </div>
+            <div>
+              <dt>Owner</dt>
+              <dd id="meta-deck-owner">-</dd>
+            </div>
+            <div>
               <dt>Slide</dt>
               <dd id="meta-slide-number">-</dd>
               </div>
@@ -122,6 +130,8 @@ export function renderDeckApp(container, deckDefinition) {
   const metaSizes = document.querySelector("#meta-sizes");
   const metaDeckTitle = document.querySelector("#meta-deck-title");
   const metaDeckDescription = document.querySelector("#meta-deck-description");
+  const metaDeckPresenter = document.querySelector("#meta-deck-presenter");
+  const metaDeckOwner = document.querySelector("#meta-deck-owner");
   const metaPanel = document.querySelector("#meta-panel");
   const metaToggle = document.querySelector("#meta-toggle");
   const presentToggle = document.querySelector("#present-toggle");
@@ -138,6 +148,8 @@ export function renderDeckApp(container, deckDefinition) {
     if (!slide) return;
     metaDeckTitle.textContent = deckDefinition.title || "-";
     metaDeckDescription.textContent = deckDefinition.description || "-";
+    metaDeckPresenter.textContent = deckDefinition.presenter || "-";
+    metaDeckOwner.textContent = deckDefinition.owner || "-";
     metaSlideNumber.textContent = slide.dataset.slideNumber || "-";
     metaLayout.textContent = slide.dataset.layout || "-";
     metaFont.textContent = slide.dataset.font || "-";
@@ -275,4 +287,3 @@ export function renderDeckApp(container, deckDefinition) {
     deck.slide(message.slideIndex);
   });
 }
-
