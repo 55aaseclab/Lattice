@@ -70,7 +70,7 @@ lattice dev --deck demo --grid
 
 ### `lattice validate`
 
-Validate deck manifests, entry files, content bindings, grid placements, overlaps, assets, themes, and runtime compatibility.
+Validate deck manifests, entry files, content bindings, grid placements, overlaps, assets, themes, and runtime compatibility. Browser-only overflow, density, and contrast checks run from a rendered deck with `?inspect=1` and publish a `lattice:inspection` report.
 
 ### `lattice build`
 
@@ -96,7 +96,7 @@ dist/demo/
 └── assets/
 ```
 
-The output can be hosted by any static server, copied into an Astro `public/`, or published to a GitHub Pages subpath — all asset URLs are relative to the deck directory.
+The output can be hosted by any static server, copied into an Astro `public/`, or published to a GitHub Pages subpath — all asset URLs are relative to the deck directory. The selected theme package's palettes and default palette are bundled into the static deck, using the same Theme menu and `?theme=<palette-id>` selection as the portal.
 
 ### `lattice preview`
 

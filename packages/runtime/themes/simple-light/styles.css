@@ -7,6 +7,29 @@
   --body-color: #595959;
   --panel-color: #eeeeee;
   --guide-color: #dcdcdc;
+  --sl-theme-canvas: #ffffff;
+  --sl-theme-ink: #000000;
+  --sl-theme-body: #595959;
+  --sl-theme-muted: #777777;
+  --sl-theme-line: #dcdcdc;
+  --sl-theme-label-surface: #eeeeee;
+  --sl-theme-muted-surface: #f4f4f4;
+  --sl-theme-soft-surface: #eeeeee;
+  --sl-theme-roadmap: #2f6b55;
+  --sl-theme-on-dark: #ffffff;
+  --sl-theme-accent: #c46b35;
+  --sl-theme-accent-soft: #f3ddcb;
+  --sl-theme-accent-alt: #5f8d7a;
+  --sl-theme-timeline-base: #91a79d;
+  --sl-theme-timeline-research: #2f6b55;
+  --sl-theme-timeline-mentoring: #5f8d7a;
+  --sl-theme-timeline-bsc: #c7d7ce;
+  --sl-theme-timeline-msc: #8faf9f;
+  --sl-theme-timeline-phd: #456f5e;
+  --sl-theme-timeline-fulltime: #254e41;
+  --sl-theme-timeline-exchange: #b2c8bc;
+  --sl-theme-timeline-service: #769b89;
+  --sl-theme-legacy: #afc4b7;
   --table-font-size: 16px;
   --table-caption-font-size: 14px;
   --table-caption-gap: 6px;
@@ -57,6 +80,14 @@
   --layout-big-number-height: 206px;
   --layout-big-number-body-top: 331px;
   --layout-big-number-body-height: 137px;
+}
+
+:root[data-lattice-theme] {
+  --slide-bg: var(--sl-theme-canvas);
+  --title-color: var(--sl-theme-ink);
+  --body-color: var(--sl-theme-body);
+  --panel-color: var(--sl-theme-muted-surface);
+  --guide-color: var(--sl-theme-line);
 }
 
 body {

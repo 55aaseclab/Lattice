@@ -4,7 +4,7 @@
   "title": "Lattice Demo Deck",
   "owner": "your-handle",
   "presenter": "Your Name",
-  "runtime": "^0.1.0",
+  "runtime": "^0.2.0",
   "theme": "simple-light",
   "entry": {
     "content": "./content.js",

@@ -36,8 +36,8 @@ export function updateCanvasSlideNumbers(root = document) {
 }
 
 export function createDeckSync(deckId) {
-  const channelName = `slides-sync:${deckId}`;
-  const storageKey = `slides-sync-state:${deckId}`;
+  const channelName = `lattice-sync:${deckId}`;
+  const storageKey = `lattice-sync-state:${deckId}`;
   const channel = new BroadcastChannel(channelName);
 
   function publishState(state) {

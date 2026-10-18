@@ -6,8 +6,10 @@ import { loadConfig, resolveRuntimeRoot } from "../config/index.js";
 import {
   DECK_SCHEMA,
   RUNTIME_VERSION,
+  createValidationIssue,
   defineGrid,
-  isRuntimeCompatible,
+  formatValidationIssue,
+  validateAssets,
   validateGridPlacements,
   validateLayoutGrids,
   validateManifest,
@@ -33,7 +35,7 @@ export async function validateCommand({ args }) {
 
   if (errors.length > 0) {
     console.error(`[lattice] validation failed with ${errors.length} issue(s):`);
-    for (const error of errors) console.error(`  - [${error.type}] ${error.message}`);
+    for (const error of errors) console.error(`  - ${formatValidationIssue(error)}`);
     process.exit(1);
   }
   console.log(`[lattice] validation passed (${deckIds.length} deck(s), schema ${DECK_SCHEMA}, runtime ${RUNTIME_VERSION})`);
@@ -51,7 +53,11 @@ async function loadRegistry(cwd, config, errors) {
   if (!config.registry) return null;
   const registryPath = path.resolve(cwd, config.registry);
   if (!fs.existsSync(registryPath)) {
-    errors.push({ type: "missing-registry", message: `config.registry not found: ${config.registry}` });
+    errors.push(createValidationIssue({
+      type: "missing-registry",
+      element: "config.registry",
+      message: `config.registry not found: ${config.registry}`,
+    }));
     return null;
   }
   try {
@@ -67,7 +73,11 @@ async function loadRegistry(cwd, config, errors) {
       await server.close();
     }
   } catch (error) {
-    errors.push({ type: "registry-import-failed", message: `${config.registry}: ${error.message}` });
+    errors.push(createValidationIssue({
+      type: "registry-import-failed",
+      element: "config.registry",
+      message: `${config.registry}: ${error.message}`,
+    }));
     return null;
   }
 }
@@ -75,14 +85,22 @@ async function loadRegistry(cwd, config, errors) {
 async function loadThemeTemplates(runtimeRoot, theme, errors) {
   const themeDir = path.join(runtimeRoot, "themes", theme);
   if (!fs.existsSync(path.join(themeDir, "index.js"))) {
-    errors.push({ type: "missing-theme", message: `theme not found in runtime: ${theme}` });
+    errors.push(createValidationIssue({
+      type: "missing-theme",
+      element: "config.theme",
+      message: `theme not found in runtime: ${theme}`,
+    }));
     return null;
   }
   try {
     const module = await import(pathToFileURL(path.join(themeDir, "index.js")).href);
     return module.simpleLightLayouts ?? null;
   } catch (error) {
-    errors.push({ type: "theme-import-failed", message: `theme ${theme}: ${error.message}` });
+    errors.push(createValidationIssue({
+      type: "theme-import-failed",
+      element: "config.theme",
+      message: `theme ${theme}: ${error.message}`,
+    }));
     return null;
   }
 }
@@ -91,7 +109,12 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
   const deckDir = path.join(decksDir, deckId);
   const manifestPath = path.join(deckDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
-    errors.push({ type: "missing-manifest", message: `deck "${deckId}" has no manifest.json` });
+    errors.push(createValidationIssue({
+      type: "missing-manifest",
+      slide: deckId,
+      element: "manifest",
+      message: `deck "${deckId}" has no manifest.json`,
+    }));
     return;
   }
 
@@ -99,7 +122,12 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
   try {
     manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   } catch (error) {
-    errors.push({ type: "invalid-manifest", message: `deck "${deckId}": ${error.message}` });
+    errors.push(createValidationIssue({
+      type: "invalid-manifest",
+      slide: deckId,
+      element: "manifest",
+      message: `deck "${deckId}": ${error.message}`,
+    }));
     return;
   }
 
@@ -109,12 +137,13 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
   for (const entryName of ["content", "layout", "notes"]) {
     const entryPath = path.join(deckDir, manifest.entry?.[entryName] ?? "");
     if (manifest.entry?.[entryName] && !fs.existsSync(entryPath)) {
-      errors.push({ type: "missing-entry", message: `deck "${deckId}": entry.${entryName} not found: ${manifest.entry[entryName]}` });
+      errors.push(createValidationIssue({
+        type: "missing-entry",
+        slide: deckId,
+        element: `manifest.entry.${entryName}`,
+        message: `deck "${deckId}": entry.${entryName} not found: ${manifest.entry[entryName]}`,
+      }));
     }
-  }
-
-  if (manifest.runtime && !isRuntimeCompatible(manifest.runtime, RUNTIME_VERSION)) {
-    errors.push({ type: "runtime-incompatible", message: `deck "${deckId}": requires runtime ${manifest.runtime}, installed ${RUNTIME_VERSION}` });
   }
 
   const entries = {};
@@ -126,7 +155,12 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
       const module = await import(pathToFileURL(entryPath).href);
       entries[entryName] = module.default ?? module;
     } catch (error) {
-      errors.push({ type: "entry-import-failed", message: `deck "${deckId}": ${manifest.entry[entryName]}: ${error.message}` });
+      errors.push(createValidationIssue({
+        type: "entry-import-failed",
+        slide: deckId,
+        element: `manifest.entry.${entryName}`,
+        message: `deck "${deckId}": ${manifest.entry[entryName]}: ${error.message}`,
+      }));
     }
   }
 
@@ -135,7 +169,12 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
   if (registry) {
     const deck = registry[deckId];
     if (!deck || typeof deck.buildSlides !== "function") {
-      errors.push({ type: "missing-deck", message: `registry has no buildSlides for deck "${deckId}"` });
+      errors.push(createValidationIssue({
+        type: "missing-deck",
+        slide: deckId,
+        element: "registry.buildSlides",
+        message: `registry has no buildSlides for deck "${deckId}"`,
+      }));
     } else {
       const markupSlides = runBuildSlides(deck, deckId, errors);
       if (markupSlides) validateMarkupAssets({ deckId, deckDir, markupSlides, errors });
@@ -150,11 +189,21 @@ function runBuildSlides(deck, deckId, errors) {
   try {
     const markupSlides = deck.buildSlides();
     for (const warning of warnings) {
-      errors.push({ type: "render-warning", message: `deck "${deckId}": ${warning}` });
+      errors.push(createValidationIssue({
+        type: "render-warning",
+        slide: deckId,
+        element: "buildSlides",
+        message: `deck "${deckId}": ${warning}`,
+      }));
     }
     return markupSlides;
   } catch (error) {
-    errors.push({ type: "build-slides-failed", message: `deck "${deckId}": ${error.message}` });
+    errors.push(createValidationIssue({
+      type: "build-slides-failed",
+      slide: deckId,
+      element: "buildSlides",
+      message: `deck "${deckId}": ${error.message}`,
+    }));
     return null;
   } finally {
     console.warn = originalWarn;
@@ -162,23 +211,19 @@ function runBuildSlides(deck, deckId, errors) {
 }
 
 function validateMarkupAssets({ deckId, deckDir, markupSlides, errors }) {
-  const assetPattern = /(?:src|href)="((?:\.\/|\.\.\/|\/)[^"]+\.(?:png|jpe?g|svg|gif|webp|avif|mp4|webm|json))"/gi;
-  const seen = new Set();
-  let match;
-  for (const markup of markupSlides) {
-    while ((match = assetPattern.exec(markup)) !== null) {
-      const url = match[1];
-      if (seen.has(url)) continue;
-      seen.add(url);
+  const report = validateAssets(markupSlides, {
+    exists: (url) => {
       const deckPrefix = `/decks/${deckId}/`;
       const relativeUrl = url.startsWith(deckPrefix) ? url.slice(deckPrefix.length) : url.replace(/^\.\//, "");
       const candidate = path.resolve(deckDir, relativeUrl);
       const isDeckPath = candidate === deckDir || candidate.startsWith(`${deckDir}${path.sep}`);
-      if (!isDeckPath || !fs.existsSync(candidate)) {
-        errors.push({ type: "missing-asset", message: `deck "${deckId}": asset not found: ${url}` });
-      }
-    }
-  }
+      return isDeckPath && fs.existsSync(candidate);
+    },
+  });
+  errors.push(...report.errors.map((error) => ({
+    ...error,
+    message: `deck "${deckId}": ${error.message}`,
+  })));
 }
 
 function validateDeclarativeLayout({ deckId, entries, themeTemplates, errors }) {
@@ -196,18 +241,25 @@ function validateDeclarativeLayout({ deckId, entries, themeTemplates, errors }) 
       .filter((element) => element.placement)
       .map((element) => ({
         name: element.id || "",
+        area: element.area || element.id || null,
+        element: element.inspectorName || element.name || element.id || null,
         col: element.placement.column ?? element.placement.col ?? 1,
         row: element.placement.row ?? 1,
         colSpan: element.placement.columnSpan ?? element.placement.colSpan ?? 1,
         rowSpan: element.placement.rowSpan ?? 1,
       }));
-    const report = validateGridPlacements(grid, placements);
+    const report = validateGridPlacements(grid, placements, { slide: slideLayout.id || null });
     if (!report.ok) errors.push(...report.errors);
 
     if (themeTemplates && slideLayout.template) {
       const templateName = String(slideLayout.template).replace(/-([a-z])/g, (_, char) => char.toUpperCase());
       if (typeof themeTemplates[templateName] !== "function") {
-        errors.push({ type: "missing-template", message: `deck "${deckId}": theme has no template "${slideLayout.template}"` });
+        errors.push(createValidationIssue({
+          type: "missing-template",
+          slide: slideLayout.id || deckId,
+          element: "layout.template",
+          message: `deck "${deckId}": theme has no template "${slideLayout.template}"`,
+        }));
       }
     }
 
@@ -215,7 +267,14 @@ function validateDeclarativeLayout({ deckId, entries, themeTemplates, errors }) 
     for (const element of slideLayout.elements) {
       if (!element.bind) continue;
       if (!slideContent || !(element.bind in slideContent)) {
-        errors.push({ type: "unresolved-binding", message: `deck "${deckId}": slide "${slideLayout.id}" element "${element.id}" cannot bind "${element.bind}"` });
+        errors.push(createValidationIssue({
+          type: "unresolved-binding",
+          slide: slideLayout.id || deckId,
+          area: element.area || element.id || null,
+          element: element.inspectorName || element.name || element.id || null,
+          binding: element.bind,
+          message: `deck "${deckId}": slide "${slideLayout.id}" element "${element.id}" cannot bind "${element.bind}"`,
+        }));
       }
     }
   }

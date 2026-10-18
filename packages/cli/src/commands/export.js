@@ -105,10 +105,11 @@ function deckStylesPath(cwd, config, deckId) {
 function writeStaticEntry(workDir, { theme, styles }) {
   const imports = [
     `import "@55aaseclab/lattice-runtime/themes/${theme}/styles.css";`,
+    `import { defaultPalette, palettes } from "@55aaseclab/lattice-runtime/themes/${theme}";`,
     ...(styles ? [`import ${JSON.stringify(path.relative(workDir, styles).split(path.sep).join("/"))};`] : []),
     `import { bootStaticDeck } from "@55aaseclab/lattice-runtime/renderer";`,
     ``,
-    `bootStaticDeck();`,
+    `bootStaticDeck({ themes: palettes, defaultTheme: defaultPalette });`,
   ];
 
   fs.writeFileSync(

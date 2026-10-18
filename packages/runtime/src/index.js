@@ -28,9 +28,25 @@ export {
 } from "./layout/index.js";
 export { createPrimitives } from "./primitives/index.js";
 export {
+  createValidationIssue,
+  formatValidationIssue,
   rectsOverlap,
   validateGridPlacements,
   validateGrids,
   validateRects,
   validateAssets,
 } from "./validator/index.js";
+export {
+  describeElement,
+  elementArea,
+  slideAddress,
+  inspectTextOverflow,
+  inspectSlideDensity,
+  parseCssColor,
+  contrastRatio,
+  inspectThemeContrast,
+  inspectRenderedSlide,
+  inspectRenderedDeck,
+  installRenderedInspection,
+  installDimensionInspection,
+} from "./inspect/index.js";

@@ -191,4 +191,3 @@ export function renderPresenterApp(container, deckDefinition) {
   updateTimer();
   updatePresenterView();
 }
-

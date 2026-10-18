@@ -186,11 +186,11 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
         console.warn(`[lattice-grid] placement issues in grid "${name || "anonymous"}":`, report.errors);
       }
       const cellMarkup = cells
-        .map(({ area = "", col, row, colSpan = 1, rowSpan = 1, content = "", cellClassName = "", fit = "", style = "" }) => {
+        .map(({ area = "", col, row, colSpan = 1, rowSpan = 1, content = "", cellClassName = "", fit = "", style = "", name: cellName = "" }) => {
           const classes = ["sl-grid-cell", fitClass(fit, "grid cell"), cellClassName].filter(Boolean).join(" ");
           const placement = area ? gridAreaStyle(area) : gridPlacementStyle({ col, row, colSpan, rowSpan });
           return `
-            <div class="${classes}" style="${[placement, style].filter(Boolean).join("; ")}">
+            <div class="${classes}"${area ? ` data-area="${escapeHtml(area)}"` : ""}${nameAttr(cellName)} style="${[placement, style].filter(Boolean).join("; ")}">
               ${content}
             </div>
           `;
@@ -204,11 +204,11 @@ export function createPrimitives({ textboxClass = "slide-textbox", groupClass = 
       `;
     },
 
-    gridCell({ area = "", col, row, colSpan = 1, rowSpan = 1, content = "", className = "", fit = "", style = "" }) {
+    gridCell({ area = "", col, row, colSpan = 1, rowSpan = 1, content = "", className = "", fit = "", style = "", name = "" }) {
       const classes = ["sl-grid-cell", fitClass(fit, "grid cell"), className].filter(Boolean).join(" ");
       const placement = area ? gridAreaStyle(area) : gridPlacementStyle({ col, row, colSpan, rowSpan });
       return `
-        <div class="${classes}" style="${[placement, style].filter(Boolean).join("; ")}">
+        <div class="${classes}"${area ? ` data-area="${escapeHtml(area)}"` : ""}${nameAttr(name)} style="${[placement, style].filter(Boolean).join("; ")}">
           ${content}
         </div>
       `;

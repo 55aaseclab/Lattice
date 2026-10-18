@@ -102,6 +102,22 @@ test("grid cells share the standard slide-fit class contract", () => {
   assert.ok(!grid.includes("sl-fit-stretch"));
 });
 
+test("named grid cells expose stable area and element addresses", () => {
+  const cell = blocks.gridCell({ area: "hero", content: "x", name: "hero artwork" });
+  assert.ok(cell.includes('data-area="hero"'));
+  assert.ok(cell.includes('data-inspector-name="hero artwork"'));
+
+  const grid = blocks.grid({
+    columns: [100],
+    rows: [100],
+    areas: { body: { col: 1, row: 1 } },
+    overlay: false,
+    cells: [{ area: "body", content: "x", name: "body copy" }],
+  });
+  assert.ok(grid.includes('data-area="body"'));
+  assert.ok(grid.includes('data-inspector-name="body copy"'));
+});
+
 test("grid cells reject unsupported fit values", () => {
   assert.throws(
     () => blocks.gridCell({ col: 1, row: 1, fit: "unknown", content: "x" }),

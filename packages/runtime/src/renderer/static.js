@@ -10,8 +10,18 @@ import {
   initInteractiveTrendCharts,
   initInteractiveAnnotations,
 } from "./index.js";
+import { installDimensionInspection } from "../inspect/dimension-overlay.js";
+import { installRenderedInspection } from "../inspect/index.js";
+import { createThemeController, installThemePicker } from "./theme.js";
 
-export async function bootStaticDeck({ container = "#app" } = {}) {
+export async function bootStaticDeck({
+  container = "#app",
+  themes = [],
+  defaultTheme,
+  themePrefix = "sl-theme",
+  themeDataset = "latticeTheme",
+  themeStorageKey = "lattice-theme",
+} = {}) {
   const appElement = document.querySelector(container);
   const deckUrl = new URL(window.location.href);
   const gridOverlayParam = deckUrl.searchParams.get("grid") === "1";
@@ -30,10 +40,25 @@ export async function bootStaticDeck({ container = "#app" } = {}) {
     buildSlides: () => content.slides.map((slide) => slide.html),
   };
 
-  renderStaticDeckApp(appElement, deckDefinition, { gridOverlayParam });
+  const themeController = themes.length ? createThemeController({
+    themes,
+    defaultTheme,
+    storageKey: `${themeStorageKey}:${deckDefinition.id}`,
+    prefix: themePrefix,
+    dataset: themeDataset,
+    onChange: (theme) => {
+      document.title = `${theme.name} · ${deckDefinition.title || "Slides"}`;
+    },
+  }) : null;
+
+  renderStaticDeckApp(appElement, deckDefinition, { gridOverlayParam, themeController, themes });
 }
 
-function renderStaticDeckApp(container, deck, { gridOverlayParam = false } = {}) {
+function renderStaticDeckApp(container, deck, {
+  gridOverlayParam = false,
+  themeController = null,
+  themes = [],
+} = {}) {
   const slidesMarkup = deck.buildSlides();
 
   container.innerHTML = `
@@ -61,8 +86,17 @@ function renderStaticDeckApp(container, deck, { gridOverlayParam = false } = {})
     </div>
   `;
 
+  if (themeController) {
+    installThemePicker({
+      container: container.querySelector(".app-menu-actions"),
+      controller: themeController,
+      themes,
+    });
+  }
+
   const slidesElement = document.querySelector("#slides");
   renderSlides(slidesElement, slidesMarkup);
+  installDimensionInspection(slidesElement);
   updateCanvasSlideNumbers(slidesElement);
   initInteractiveTrendCharts(slidesElement, deck.id);
   initInteractiveAnnotations(slidesElement, deck.id);
@@ -107,6 +141,7 @@ function renderStaticDeckApp(container, deck, { gridOverlayParam = false } = {})
   revealDeck.on("ready", (event) => {
     updateCanvasSlideNumbers();
     updateNotes(event.currentSlide);
+    installRenderedInspection(slidesElement, { deck: deck.id });
   });
   revealDeck.on("slidechanged", (event) => {
     updateCanvasSlideNumbers();

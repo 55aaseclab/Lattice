@@ -19,8 +19,8 @@ test("init uses registry semver dependencies by default", async () => {
   await initCommand({ args: { "no-install": true }, rest: [target] });
 
   const packageJson = packageFrom(target);
-  assert.equal(packageJson.dependencies["@55aaseclab/lattice-runtime"], "^0.1.2");
-  assert.equal(packageJson.devDependencies["@55aaseclab/lattice-cli"], "^0.1.2");
+  assert.equal(packageJson.dependencies["@55aaseclab/lattice-runtime"], "^0.2.0");
+  assert.equal(packageJson.devDependencies["@55aaseclab/lattice-cli"], "^0.2.0");
   assert.equal(Object.values(packageJson.dependencies).some((value) => value.startsWith("file:")), false);
   assert.equal(Object.values(packageJson.devDependencies).some((value) => value.startsWith("file:")), false);
   assert.equal(manifestFrom(target).owner, "your-handle");

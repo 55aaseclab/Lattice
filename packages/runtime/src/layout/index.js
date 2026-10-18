@@ -15,7 +15,15 @@ import {
   rectToGridPlacement,
   renderGridOverlay,
 } from "../grid/index.js";
-import { validateGridPlacements, validateGrids, validateRects, rectsOverlap, validateAssets } from "../validator/index.js";
+import {
+  createValidationIssue,
+  formatValidationIssue,
+  validateGridPlacements,
+  validateGrids,
+  validateRects,
+  rectsOverlap,
+  validateAssets,
+} from "../validator/index.js";
 
 export {
   SLIDE_CANVAS,
@@ -33,6 +41,8 @@ export {
   gridTrackOffsets,
   rectToGridPlacement,
   renderGridOverlay,
+  createValidationIssue,
+  formatValidationIssue,
   rectsOverlap,
   validateGridPlacements,
   validateGrids,
@@ -219,7 +229,7 @@ export function createSlideAssembler(theme = defaultSlideTheme) {
   `;
 
   const gridSlot = (area, className, content = "") => `
-    <div class="${className}" style="${gridAreaStyle(area)}">
+    <div class="${className}" data-area="${area}" style="${gridAreaStyle(area)}">
       ${content}
     </div>
   `;

@@ -10,6 +10,8 @@ import {
 } from "./core.js";
 import { initInteractiveTrendCharts, initInteractiveAnnotations } from "./interactive.js";
 import { initSlideEditor } from "./editor.js";
+import { installDimensionInspection } from "../inspect/dimension-overlay.js";
+import { installRenderedInspection } from "../inspect/index.js";
 
 export function renderDeckApp(container, deckDefinition) {
   const deckUrl = new URL(window.location.href);
@@ -100,6 +102,7 @@ export function renderDeckApp(container, deckDefinition) {
 
   const slidesElement = document.querySelector("#slides");
   renderSlides(slidesElement, slidesMarkup);
+  installDimensionInspection(slidesElement);
   initInteractiveTrendCharts(slidesElement, deckDefinition.id);
   initInteractiveAnnotations(slidesElement, deckDefinition.id);
   if (editMode) {
@@ -271,6 +274,7 @@ export function renderDeckApp(container, deckDefinition) {
       slideIndex: deck.getIndices().h,
       slideNumber: event.currentSlide?.dataset.slideNumber || "",
     });
+    installRenderedInspection(slidesElement, { deck: deckDefinition.id });
   });
   deck.on("slidechanged", (event) => {
     updateCanvasSlideNumbers();

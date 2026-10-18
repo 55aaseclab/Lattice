@@ -1,6 +1,8 @@
 export const DECK_SCHEMA = "lattice.deck.v1";
 
-export const RUNTIME_VERSION = "0.1.0";
+export const RUNTIME_VERSION = "0.2.0";
+
+import { createValidationIssue } from "../validator/index.js";
 
 function parseVersion(version) {
   if (typeof version !== "string") return null;
@@ -50,46 +52,62 @@ export function isRuntimeCompatible(range, version = RUNTIME_VERSION) {
 
 export function validateManifest(manifest, { expectedId = "", runtimeVersion = RUNTIME_VERSION } = {}) {
   const errors = [];
+  const issue = (type, message, details = {}) => createValidationIssue({
+    type,
+    element: details.element ?? "manifest",
+    ...details,
+    message,
+  });
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
-    return { ok: false, errors: [{ type: "invalid-manifest", message: "manifest must be a JSON object" }] };
+    return { ok: false, errors: [issue("invalid-manifest", "manifest must be a JSON object")] };
   }
   if (manifest.schema !== DECK_SCHEMA) {
-    errors.push({
-      type: "schema-mismatch",
-      message: `unsupported deck schema: ${JSON.stringify(manifest.schema)} (expected ${DECK_SCHEMA})`,
-    });
+    errors.push(issue(
+      "schema-mismatch",
+      `unsupported deck schema: ${JSON.stringify(manifest.schema)} (expected ${DECK_SCHEMA})`,
+      { element: "manifest.schema" },
+    ));
   }
   if (typeof manifest.id !== "string" || manifest.id === "") {
-    errors.push({ type: "invalid-manifest", message: "manifest.id must be a non-empty string" });
+    errors.push(issue("invalid-manifest", "manifest.id must be a non-empty string", { element: "manifest.id" }));
   } else if (expectedId && manifest.id !== expectedId) {
-    errors.push({ type: "invalid-manifest", message: `manifest.id "${manifest.id}" does not match deck directory "${expectedId}"` });
+    errors.push(issue(
+      "invalid-manifest",
+      `manifest.id "${manifest.id}" does not match deck directory "${expectedId}"`,
+      { slide: manifest.id, element: "manifest.id" },
+    ));
   }
   if (typeof manifest.title !== "string" || manifest.title === "") {
-    errors.push({ type: "invalid-manifest", message: "manifest.title must be a non-empty string" });
+    errors.push(issue("invalid-manifest", "manifest.title must be a non-empty string", { slide: manifest.id, element: "manifest.title" }));
   }
-  if (manifest.owner !== undefined && (typeof manifest.owner !== "string" || manifest.owner.trim() === "")) {
-    errors.push({ type: "invalid-manifest", message: "manifest.owner must be a non-empty string when provided" });
+  if (typeof manifest.owner !== "string" || manifest.owner.trim() === "") {
+    errors.push(issue("invalid-manifest", "manifest.owner must be a non-empty string", { slide: manifest.id, element: "manifest.owner" }));
   }
-  if (manifest.presenter !== undefined && (typeof manifest.presenter !== "string" || manifest.presenter.trim() === "")) {
-    errors.push({ type: "invalid-manifest", message: "manifest.presenter must be a non-empty string when provided" });
+  if (typeof manifest.presenter !== "string" || manifest.presenter.trim() === "") {
+    errors.push(issue("invalid-manifest", "manifest.presenter must be a non-empty string", { slide: manifest.id, element: "manifest.presenter" }));
   }
   if (!isRuntimeCompatible(manifest.runtime, runtimeVersion)) {
-    errors.push({
-      type: "runtime-incompatible",
-      message: `deck requires runtime ${manifest.runtime} but installed runtime is ${runtimeVersion}`,
-    });
+    errors.push(issue(
+      "runtime-incompatible",
+      `deck requires runtime ${manifest.runtime} but installed runtime is ${runtimeVersion}`,
+      { slide: manifest.id, element: "manifest.runtime" },
+    ));
   }
   if (typeof manifest.theme !== "string" || manifest.theme === "") {
-    errors.push({ type: "invalid-manifest", message: "manifest.theme must be a non-empty string" });
+    errors.push(issue("invalid-manifest", "manifest.theme must be a non-empty string", { slide: manifest.id, element: "manifest.theme" }));
   }
   const entry = manifest.entry ?? {};
   for (const entryName of ["content", "layout", "notes"]) {
     if (typeof entry[entryName] !== "string" || entry[entryName] === "") {
-      errors.push({ type: "invalid-manifest", message: `manifest.entry.${entryName} must be a non-empty string` });
+      errors.push(issue(
+        "invalid-manifest",
+        `manifest.entry.${entryName} must be a non-empty string`,
+        { slide: manifest.id, element: `manifest.entry.${entryName}` },
+      ));
     }
   }
   if (typeof manifest.assets !== "string" || manifest.assets === "") {
-    errors.push({ type: "invalid-manifest", message: "manifest.assets must be a non-empty string" });
+    errors.push(issue("invalid-manifest", "manifest.assets must be a non-empty string", { slide: manifest.id, element: "manifest.assets" }));
   }
   return { ok: errors.length === 0, errors };
 }
@@ -102,7 +120,14 @@ export async function loadDeckPackage(deckDir, { runtimeVersion = RUNTIME_VERSIO
   try {
     manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   } catch (error) {
-    return { ok: false, errors: [{ type: "missing-manifest", message: `cannot read ${manifestPath}: ${error.message}` }] };
+    return {
+      ok: false,
+      errors: [createValidationIssue({
+        type: "missing-manifest",
+        element: "manifest",
+        message: `cannot read ${manifestPath}: ${error.message}`,
+      })],
+    };
   }
 
   const report = validateManifest(manifest, { expectedId: deckDir.split("/").filter(Boolean).pop(), runtimeVersion });
@@ -117,7 +142,15 @@ export async function loadDeckPackage(deckDir, { runtimeVersion = RUNTIME_VERSIO
     try {
       entries[entryName] = (await import(entryPath)).default;
     } catch (error) {
-      return { ok: false, errors: [{ type: "entry-import-failed", message: `cannot import ${entryPath}: ${error.message}` }] };
+      return {
+        ok: false,
+        errors: [createValidationIssue({
+          type: "entry-import-failed",
+          slide: manifest.id,
+          element: `manifest.entry.${entryName}`,
+          message: `cannot import ${entryPath}: ${error.message}`,
+        })],
+      };
     }
   }
 

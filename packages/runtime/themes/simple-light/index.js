@@ -14,6 +14,8 @@ import {
   gridTrackOffsets,
   rectToGridPlacement,
   renderGridOverlay,
+  createValidationIssue,
+  formatValidationIssue,
   rectsOverlap,
   validateGridPlacements,
   validateGrids,
@@ -26,6 +28,7 @@ import {
   createSlideAssembler,
 } from "../../src/layout/index.js";
 import { createPrimitives } from "../../src/primitives/index.js";
+export { palettes, defaultPalette } from "./palettes.js";
 
 export {
   SLIDE_CANVAS,
@@ -43,6 +46,8 @@ export {
   gridTrackOffsets,
   rectToGridPlacement,
   renderGridOverlay,
+  createValidationIssue,
+  formatValidationIssue,
   rectsOverlap,
   validateGridPlacements,
   validateGrids,

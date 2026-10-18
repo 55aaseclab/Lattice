@@ -8,7 +8,7 @@ const validManifest = {
   title: "Demo Deck",
   owner: "deck-owner",
   presenter: "Demo Presenter",
-  runtime: "^0.1.0",
+  runtime: "^0.2.0",
   theme: "simple-light",
   entry: {
     content: "./content.js",
@@ -28,15 +28,18 @@ test("isRuntimeCompatible handles caret ranges on 0.x", () => {
   assert.equal(isRuntimeCompatible("~0.1.0", "0.2.0"), false);
   assert.equal(isRuntimeCompatible("*", "9.9.9"), true);
   assert.equal(isRuntimeCompatible("not-a-version", "0.1.0"), false);
+  assert.equal(RUNTIME_VERSION, "0.2.0");
 });
 
 test("validateManifest accepts a valid manifest", () => {
   assert.deepEqual(validateManifest(validManifest), { ok: true, errors: [] });
 });
 
-test("validateManifest accepts manifests without ownership metadata for backwards compatibility", () => {
-  const { owner, presenter, ...legacyManifest } = validManifest;
-  assert.deepEqual(validateManifest(legacyManifest), { ok: true, errors: [] });
+test("validateManifest requires ownership metadata in the M2 contract", () => {
+  const { owner, presenter, ...incompleteManifest } = validManifest;
+  const report = validateManifest(incompleteManifest);
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.errors.map(({ element }) => element), ["manifest.owner", "manifest.presenter"]);
 });
 
 test("validateManifest rejects an invalid presenter", () => {
@@ -55,6 +58,17 @@ test("validateManifest rejects unsupported schemas", () => {
   const report = validateManifest({ ...validManifest, schema: "lattice.deck.v2" });
   assert.equal(report.ok, false);
   assert.equal(report.errors[0].type, "schema-mismatch");
+});
+
+test("manifest failures use the stable validation envelope", () => {
+  const report = validateManifest({ ...validManifest, title: "" });
+  assert.deepEqual(report.errors[0], {
+    type: "invalid-manifest",
+    slide: "demo",
+    area: null,
+    element: "manifest.title",
+    message: "manifest.title must be a non-empty string",
+  });
 });
 
 test("validateManifest rejects runtime mismatches", () => {

@@ -1,0 +1,157 @@
+/* Engineering-style dimensions are a transient authoring aid. They are
+   deliberately independent of a deck's visual theme and are only revealed
+   by the existing Grid switch. */
+.sl-dimension-overlay {
+  position: absolute;
+  left: -26px;
+  top: -26px;
+  z-index: 42;
+  display: none;
+  width: calc(100% + 52px);
+  height: calc(100% + 52px);
+  overflow: visible;
+  pointer-events: none;
+  font-family: Arial, Helvetica, sans-serif;
+  shape-rendering: geometricPrecision;
+}
+
+.slide-canvas.show-grid-overlay .sl-dimension-overlay {
+  display: block;
+}
+
+.deck-runtime.is-presenting .sl-dimension-overlay,
+html.reveal-print .sl-dimension-overlay {
+  display: none !important;
+}
+
+.sl-dimension-line {
+  stroke: rgba(25, 103, 154, 0.76);
+  stroke-width: 0.8;
+  vector-effect: non-scaling-stroke;
+}
+
+.sl-dimension-extension {
+  stroke: rgba(25, 103, 154, 0.35);
+  stroke-dasharray: 1.5 1.5;
+}
+
+.sl-dimension-ruler-structure .sl-dimension-line {
+  stroke: rgba(180, 90, 35, 0.78);
+}
+
+.sl-dimension-ruler-structure .sl-dimension-extension {
+  stroke: rgba(180, 90, 35, 0.35);
+}
+
+.sl-dimension-label,
+.sl-dimension-axis,
+.sl-dimension-selected {
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.sl-dimension-label {
+  fill: rgb(25, 103, 154);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.sl-dimension-ruler-structure .sl-dimension-label {
+  fill: rgb(180, 90, 35);
+}
+
+.sl-dimension-vertical {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sl-dimension-vertical.sl-dimension-left {
+  transform: rotate(-90deg);
+}
+
+.sl-dimension-vertical.sl-dimension-right {
+  transform: rotate(90deg);
+}
+
+.sl-dimension-axis {
+  fill: rgba(25, 103, 154, 0.76);
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  text-anchor: start;
+}
+
+.sl-dimension-axis-bottom {
+  fill: rgba(180, 90, 35, 0.78);
+  text-anchor: end;
+}
+
+.sl-dimension-highlight {
+  fill: rgba(180, 90, 35, 0.05);
+  stroke: rgba(180, 90, 35, 0.9);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.sl-dimension-selection {
+  fill: rgba(25, 103, 154, 0.045);
+  stroke: rgba(25, 103, 154, 0.92);
+  stroke-width: 1;
+  stroke-dasharray: 2.5 1.75;
+  vector-effect: non-scaling-stroke;
+}
+
+.sl-dimension-selection-index {
+  fill: rgb(25, 103, 154);
+  font-size: 7px;
+  font-weight: 700;
+  dominant-baseline: middle;
+  text-anchor: start;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.sl-dimension-selection-status {
+  fill: rgba(25, 103, 154, 0.82);
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.075em;
+  text-anchor: end;
+}
+
+.sl-dimension-selected {
+  fill: rgb(130, 62, 25);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.sl-dimension-selected-name {
+  fill: rgb(130, 62, 25);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-anchor: start;
+}
+
+.sl-dimension-selected-leader,
+.sl-dimension-selected-span,
+.sl-dimension-selected-tick {
+  stroke: rgba(180, 90, 35, 0.68);
+  stroke-width: 0.75;
+  stroke-dasharray: 1.5 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.sl-dimension-selected-span,
+.sl-dimension-selected-tick {
+  stroke-dasharray: none;
+}
