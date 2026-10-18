@@ -243,6 +243,28 @@ export function inspectRenderedSlide(slide, options = {}) {
   return { ok: errors.length === 0, errors };
 }
 
+const inspectMeasurableSlide = (slide, inspect) => {
+  const view = slide.ownerDocument?.defaultView ?? globalThis.window;
+  const style = view?.getComputedStyle?.(slide);
+  const hasBox = slide.getClientRects?.().length !== 0 &&
+    slide.clientWidth > 0 && slide.clientHeight > 0;
+  if (style?.display !== "none" && style?.visibility !== "hidden" && hasBox) return inspect();
+  if (!slide.style?.setProperty || !slide.getAttribute) return inspect();
+
+  const previousStyle = slide.getAttribute("style");
+  // Reveal hides inactive sections with `display: none`. Expose one slide at
+  // a time so browser geometry is available to the inspector, then restore
+  // the authored/Reveal state before inspecting the next slide.
+  slide.style.setProperty("display", "block", "important");
+  slide.style.setProperty("visibility", "visible", "important");
+  try {
+    return inspect();
+  } finally {
+    if (previousStyle === null) slide.removeAttribute("style");
+    else slide.setAttribute("style", previousStyle);
+  }
+};
+
 export function inspectRenderedDeck(
   root = document,
   {
@@ -253,10 +275,13 @@ export function inspectRenderedDeck(
   } = {},
 ) {
   const slides = [...root.querySelectorAll(slideSelector)];
-  const errors = slides.flatMap((slide, index) => inspectRenderedSlide(slide, {
-    overflow: { slide: slideAddress(slide, index + 1), ...overflow },
-    density: { slide: slideAddress(slide, index + 1), ...density },
-  }).errors);
+  const errors = slides.flatMap((slide, index) => inspectMeasurableSlide(
+    slide,
+    () => inspectRenderedSlide(slide, {
+      overflow: { slide: slideAddress(slide, index + 1), ...overflow },
+      density: { slide: slideAddress(slide, index + 1), ...density },
+    }).errors,
+  ));
   if (contrast !== false) {
     const contrastRoot = contrast.root || root.documentElement || root.ownerDocument?.documentElement;
     if (contrastRoot) errors.push(...inspectThemeContrast(contrastRoot, contrast).errors);

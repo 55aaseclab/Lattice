@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
+import { layoutGridSpecs } from "../src/layout/index.js";
 
 const stylesUrl = new URL("../themes/simple-light/styles.css", import.meta.url);
+
+test("simple-light title slide leaves room for a two-line subtitle", async () => {
+  const styles = await readFile(stylesUrl, "utf8");
+
+  assert.deepEqual(layoutGridSpecs.titleSlide.rows, [215, 96]);
+  assert.deepEqual(layoutGridSpecs.titleSlide.margin, {
+    top: 78,
+    left: 33,
+    right: 32,
+    bottom: 146,
+  });
+  assert.match(styles, /--layout-title-slide-subtitle-height:\s*96px;/);
+});
 
 test("simple-light keeps the last table row border against Reveal defaults", async () => {
   const styles = await readFile(stylesUrl, "utf8");

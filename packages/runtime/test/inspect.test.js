@@ -5,6 +5,7 @@ import {
   inspectSlideDensity,
   inspectTextOverflow,
   inspectThemeContrast,
+  inspectRenderedDeck,
   installRenderedInspection,
   parseCssColor,
 } from "../src/inspect/index.js";
@@ -127,6 +128,63 @@ test("inspectSlideDensity reports element and word thresholds", () => {
   assert.deepEqual(report.errors[0].counts, { elements: 3, words: 5 });
   assert.deepEqual(report.errors[0].limits, { elements: 2, words: 4 });
   assert.equal(report.errors[0].slide, "4");
+});
+
+test("inspectRenderedDeck measures Reveal-hidden slides and restores their inline style", () => {
+  const overflowing = fakeElement({ scrollHeight: 57 });
+  let styleAttribute = "color: rebeccapurple";
+  let display = "none";
+  let visibility = "hidden";
+  const slide = {
+    dataset: { slideNumber: "2" },
+    clientWidth: 960,
+    clientHeight: 540,
+    textContent: "hidden slide copy",
+    style: {
+      setProperty: (property, value) => {
+        if (property === "display") display = value;
+        if (property === "visibility") visibility = value;
+      },
+    },
+    getClientRects: () => collection(display === "none" ? [] : [{}]),
+    getAttribute: (attribute) => attribute === "style" ? styleAttribute : "",
+    setAttribute: (attribute, value) => {
+      if (attribute === "style") {
+        styleAttribute = value;
+        display = "none";
+        visibility = "hidden";
+      }
+    },
+    removeAttribute: (attribute) => {
+      if (attribute === "style") styleAttribute = null;
+    },
+    querySelectorAll: () => collection([overflowing]),
+    cloneNode: () => ({
+      textContent: "hidden slide copy",
+      querySelectorAll: () => collection([]),
+    }),
+  };
+  slide.ownerDocument = {
+    defaultView: {
+      getComputedStyle: (element) => element === slide
+        ? { display, visibility, opacity: "1" }
+        : { display: "block", visibility: "visible", opacity: "1" },
+    },
+  };
+  const root = {
+    querySelectorAll: () => collection([slide]),
+    documentElement: null,
+  };
+
+  const report = inspectRenderedDeck(root, { contrast: false });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.slides, 1);
+  assert.equal(report.errors[0].slide, "2");
+  assert.equal(report.errors[0].overflow.y, 17);
+  assert.equal(styleAttribute, "color: rebeccapurple");
+  assert.equal(display, "none");
+  assert.equal(visibility, "hidden");
 });
 
 test("installRenderedInspection is opt-in and dispatches a stable report", () => {

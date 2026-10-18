@@ -53,9 +53,9 @@ export {
 export const layoutGridSpecs = {
   titleSlide: {
     columns: [895],
-    rows: [215, 83],
+    rows: [215, 96],
     gap: { y: 5 },
-    margin: { top: 78, left: 33, right: 32, bottom: 159 },
+    margin: { top: 78, left: 33, right: 32, bottom: 146 },
     areas: {
       title: { col: 1, row: 1 },
       subtitle: { col: 1, row: 2 },

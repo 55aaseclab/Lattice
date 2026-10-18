@@ -270,6 +270,48 @@ function addEditableText(slide, element, style, bounds, text, objectIndex) {
   });
 }
 
+const splitCssColor = (value) => {
+  const color = colorFromCss(value);
+  if (!color) return null;
+  return {
+    color: `rgb(${Number.parseInt(color.color.slice(0, 2), 16)}, ${Number.parseInt(color.color.slice(2, 4), 16)}, ${Number.parseInt(color.color.slice(4, 6), 16)})`,
+    opacity: String((100 - color.transparency) / 100),
+  };
+};
+
+export function normalizeSvgPaint(svg) {
+  for (const element of [svg, ...svg.querySelectorAll("*")]) {
+    for (const property of ["fill", "stroke"]) {
+      const styled = element.style?.getPropertyValue?.(property);
+      const raw = styled || element.getAttribute(property);
+      if (!raw || (!raw.startsWith("rgb(") && !raw.startsWith("rgba(") && !raw.startsWith("color("))) continue;
+      const paint = splitCssColor(raw);
+      if (!paint) continue;
+      if (styled) element.style.setProperty(property, paint.color);
+      else element.setAttribute(property, paint.color);
+      if (paint.opacity !== "1") {
+        const opacityProperty = `${property}-opacity`;
+        const styledOpacity = element.style?.getPropertyValue?.(opacityProperty);
+        const existing = number(styledOpacity || element.getAttribute(opacityProperty), 1);
+        const normalizedOpacity = String(existing * Number(paint.opacity));
+        if (styledOpacity) element.style.setProperty(opacityProperty, normalizedOpacity);
+        else element.setAttribute(opacityProperty, normalizedOpacity);
+      }
+    }
+  }
+  return svg;
+}
+
+const encodeSvgDataUri = (source) =>
+  `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(source)))}`;
+
+const normalizeSvgSource = (source) => {
+  const parsed = new DOMParser().parseFromString(source, "image/svg+xml");
+  if (parsed.querySelector("parsererror") || parsed.documentElement?.tagName.toLowerCase() !== "svg") return null;
+  normalizeSvgPaint(parsed.documentElement);
+  return new XMLSerializer().serializeToString(parsed.documentElement);
+};
+
 function svgDataUri(svg) {
   const clone = svg.cloneNode(true);
   const originalNodes = [svg, ...svg.querySelectorAll("*")];
@@ -284,8 +326,9 @@ function svgDataUri(svg) {
     target.setAttribute("style", serialized);
   });
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  normalizeSvgPaint(clone);
   const source = new XMLSerializer().serializeToString(clone);
-  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(source)))}`;
+  return encodeSvgDataUri(source);
 }
 
 async function imageDataUri(image) {
@@ -295,6 +338,10 @@ async function imageDataUri(image) {
   const response = await fetch(source);
   if (!response.ok) throw new Error(`Unable to embed image: ${source}`);
   const blob = await response.blob();
+  if (blob.type === "image/svg+xml" || new URL(source, window.location.href).pathname.endsWith(".svg")) {
+    const normalized = normalizeSvgSource(await blob.text());
+    if (normalized) return encodeSvgDataUri(normalized);
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(reader.result));
