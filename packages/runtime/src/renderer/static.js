@@ -5,6 +5,7 @@ import renderMathInElement from "katex/contrib/auto-render";
 import "./app.css";
 import {
   renderSlides,
+  applyDeckIdentity,
   createRevealDeck,
   updateCanvasSlideNumbers,
   initInteractiveTrendCharts,
@@ -39,6 +40,8 @@ export async function bootStaticDeck({
     description: content.description || "",
     buildSlides: () => content.slides.map((slide) => slide.html),
   };
+
+  applyDeckIdentity(appElement, deckDefinition.id);
 
   const themeController = themes.length ? createThemeController({
     themes,
@@ -137,11 +140,12 @@ function renderStaticDeckApp(container, deck, {
   }
 
   const revealDeck = createRevealDeck();
+  window.__latticeReveal = revealDeck;
   revealDeck.initialize();
-  revealDeck.on("ready", (event) => {
+  revealDeck.on("ready", async (event) => {
     updateCanvasSlideNumbers();
     updateNotes(event.currentSlide);
-    installRenderedInspection(slidesElement, { deck: deck.id });
+    await installRenderedInspection(slidesElement, { deck: deck.id });
   });
   revealDeck.on("slidechanged", (event) => {
     updateCanvasSlideNumbers();

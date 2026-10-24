@@ -35,6 +35,23 @@ export function updateCanvasSlideNumbers(root = document) {
   });
 }
 
+/**
+ * Stamp the hosting app root with the active deck's stable identity
+ * (`data-lattice-deck`). Deck-private stylesheets can scope generic slide
+ * rules to their own deck through this hook, so one deck's CSS can never leak
+ * into another deck's rendering in the multi-deck portal or in a static
+ * export. Returns the attribute value that was set.
+ */
+export function applyDeckIdentity(container, deckId) {
+  if (!container) return null;
+  if (deckId == null || deckId === "") {
+    delete container.dataset.latticeDeck;
+    return null;
+  }
+  container.dataset.latticeDeck = String(deckId);
+  return container.dataset.latticeDeck;
+}
+
 export function createDeckSync(deckId) {
   const channelName = `lattice-sync:${deckId}`;
   const storageKey = `lattice-sync-state:${deckId}`;

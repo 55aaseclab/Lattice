@@ -5,6 +5,8 @@ import { buildCommand } from "./commands/build.js";
 import { exportCommand } from "./commands/export.js";
 import { validateCommand } from "./commands/validate.js";
 import { previewCommand } from "./commands/preview.js";
+import { inspectCommand } from "./commands/inspect.js";
+import { screenshotCommand } from "./commands/screenshot.js";
 
 const commands = {
   init: initCommand,
@@ -13,6 +15,8 @@ const commands = {
   export: exportCommand,
   validate: validateCommand,
   preview: previewCommand,
+  inspect: inspectCommand,
+  screenshot: screenshotCommand,
 };
 
 function parseArgs(argv) {
@@ -45,9 +49,23 @@ Usage:
   lattice init <dir> [--theme <name>] [--example <name>] [--local] [--no-install]
   lattice dev [--port <port>] [--host <host>] [--deck <id>] [--grid] [--open]
   lattice validate [--deck <id>]
+  lattice inspect --rendered [--deck <id>] [--out <file>] [--timeout <ms>]
+                  [--browser <path>] [--base-url <url>] [--port <port>] [--host <host>]
+  lattice screenshot [--deck <id>] [--update-baseline] [--baseline-dir <dir>]
+                     [--out <dir>] [--report <file>] [--max-diff-ratio <n>] [--timeout <ms>]
   lattice build [--out <dir>]
   lattice export --deck <id> [--out <dir>] [--skip-build]
-  lattice preview [--port <port>] [--host <host>]`);
+  lattice preview [--port <port>] [--host <host>]
+
+"lattice inspect --rendered" launches headless Chromium, waits for the deck's
+app-ready signal plus fonts and image decode, and collects
+overflow/contrast/density findings as a JSON artifact. --rendered is the
+canonical form (PRD 3.1.4); bare "lattice inspect" is a compatibility alias.
+Unknown options are rejected. Exit code 1 marks blocking findings (including
+uncaught page errors and ready timeouts), 2 an infrastructure error (e.g. no
+Chromium found); stdout always carries the JSON report. console.error noise is
+recorded as diagnostics only.
+`);
     return;
   }
   const handler = commands[command];

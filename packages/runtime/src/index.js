@@ -47,6 +47,8 @@ export {
   inspectThemeContrast,
   inspectRenderedSlide,
   inspectRenderedDeck,
+  waitForRenderReadiness,
+  RenderReadinessError,
   installRenderedInspection,
   installDimensionInspection,
 } from "./inspect/index.js";

@@ -1,0 +1,15 @@
+{
+  "schema": "lattice.deck.v1",
+  "id": "bad",
+  "title": "Bad Deck",
+  "owner": "fixture-owner",
+  "presenter": "Fixture Presenter",
+  "runtime": "^0.2.0",
+  "theme": "simple-light",
+  "assets": "./assets/",
+  "entry": {
+    "content": "./content.json",
+    "layout": "./layout.json",
+    "notes": "./notes.json"
+  }
+}

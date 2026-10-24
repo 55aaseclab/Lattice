@@ -1,6 +1,7 @@
 export { SLIDE_CANVAS } from "../grid/index.js";
 export {
   renderSlides,
+  applyDeckIdentity,
   createRevealDeck,
   updateCanvasSlideNumbers,
   createDeckSync,
@@ -16,7 +17,7 @@ export { createPdfExportUrl, exportDeckAsPdf, installPdfExportRenderer } from ".
 export { installFullscreenFit } from "./fullscreen.js";
 export { bootDeckPortal, renderDeckLauncher, installDismissibleMenus } from "./portal.js";
 export { installDimensionInspection } from "../inspect/dimension-overlay.js";
-export { installRenderedInspection } from "../inspect/index.js";
+export { installRenderedInspection, waitForRenderReadiness, RenderReadinessError } from "../inspect/index.js";
 export {
   resolveTheme,
   applyThemeTokens,

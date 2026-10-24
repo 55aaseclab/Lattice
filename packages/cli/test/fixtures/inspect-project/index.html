@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Inspect Fixture</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module">
+      import { renderDeckApp } from "@55aaseclab/lattice-runtime/renderer";
+      import { simpleLightLayouts } from "@55aaseclab/lattice-runtime/themes/simple-light";
+      import "@55aaseclab/lattice-runtime/themes/simple-light/styles.css";
+
+      const deckId = new URLSearchParams(window.location.search).get("deck") ?? "clean";
+      // Vite define (see vite.config.js): flips the "stable" deck's title
+      // deterministically so visual-regression tests can mutate one run.
+      const variant = typeof __FIXTURE_VARIANT__ !== "undefined" ? __FIXTURE_VARIANT__ : "a";
+
+      const decks = {
+        clean: {
+          id: "clean",
+          title: "Clean Fixture",
+          description: "Should pass rendered inspection",
+          buildSlides: () => [
+            simpleLightLayouts.titleSlide({ title: "Clean Fixture", subtitle: "no findings expected" }),
+            simpleLightLayouts.titleBody({ title: "Body", body: "<p>Short body copy.</p>" }),
+          ],
+        },
+        stable: {
+          id: "stable",
+          title: "Stable Fixture",
+          description: "Deterministic two-slide visual baseline",
+          buildSlides: () => [
+            simpleLightLayouts.titleSlide({
+              title: variant === "b" ? "Stable Fixture (mutated)" : "Stable Fixture",
+              subtitle: "visual baseline control",
+            }),
+            simpleLightLayouts.titleBody({ title: "Second Slide", body: "<p>Deterministic body copy.</p>" }),
+          ],
+        },
+        solo: {
+          id: "solo",
+          title: "Solo Fixture",
+          description: "Deck without baselines unless explicitly created",
+          buildSlides: () => [
+            simpleLightLayouts.titleOnly({ title: "Solo Fixture" }),
+          ],
+        },
+        overflow: {
+          id: "overflow",
+          title: "Overflow Fixture",
+          description: "Clipped content must be reported",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Overflow Fixture",
+              body: `<div data-inspector-name="clipped copy" data-area="body" style="height:40px;overflow:hidden;width:480px;"><div style="height:240px;">tall clipped content</div></div>`,
+            }),
+          ],
+        },
+        "broken-image": {
+          id: "broken-image",
+          title: "Broken Image Fixture",
+          description: "A missing image must be reported",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Broken Image",
+              body: `<img src="/decks/broken-image/assets/missing.png" alt="missing asset" style="width:120px;height:80px;">`,
+            }),
+          ],
+        },
+        "slow-image": {
+          id: "slow-image",
+          title: "Slow Image Fixture",
+          description: "Inspection must not publish before image decode settles",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Slow Image",
+              body: `<img src="/decks/slow-image/assets/slow.png" alt="slow asset" style="width:120px;height:80px;">`,
+            }),
+          ],
+        },
+        "hung-image": {
+          id: "hung-image",
+          title: "Hung Image Fixture",
+          description: "An image whose decode never settles must ready-timeout",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Hung Image",
+              body: `<img src="/decks/hung-image/assets/hung.png" alt="hung asset" style="width:120px;height:80px;">`,
+            }),
+          ],
+        },
+        crash: {
+          id: "crash",
+          title: "Crash Fixture",
+          description: "Publishes a clean report, then throws uncaught",
+          buildSlides: () => [
+            simpleLightLayouts.titleOnly({ title: "Crash Fixture" }),
+          ],
+        },
+        contrast: {
+          id: "contrast",
+          title: "Contrast Fixture",
+          description: "Theme token below the WCAG contrast floor",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({ title: "Contrast Fixture", body: "<p>Body copy rendered at the failing token.</p>" }),
+          ],
+        },
+        density: {
+          id: "density",
+          title: "Density Fixture",
+          description: "More inspector elements than the density budget",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Density Fixture",
+              body: Array.from({ length: 61 }, (_, index) =>
+                `<div data-inspector-name="density-item-${index + 1}" style="display:block;height:2px;"></div>`).join(""),
+            }),
+          ],
+        },
+        "missing-font": {
+          id: "missing-font",
+          title: "Missing Font Fixture",
+          description: "A used webfont fails to load",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Missing Font",
+              body: `<p style="font-family:'Lattice Fixture Missing', serif;">This text needs a webfont that cannot load.</p>`,
+            }),
+          ],
+        },
+        "clean-fonts": {
+          id: "clean-fonts",
+          title: "Clean Fonts Fixture",
+          description: "System fallback and an unused font must not be flagged",
+          buildSlides: () => [
+            simpleLightLayouts.titleBody({
+              title: "Clean Fonts",
+              body: `<p style="font-family:'Lattice Fixture Not Installed', system-ui;">System fallback only, the declared webfont is unused.</p>`,
+            }),
+          ],
+        },
+      };
+
+      if (deckId === "contrast") {
+        // Inline documentElement style beats the theme stylesheet's :root
+        // tokens, deterministically dropping title contrast to 4.48:1.
+        document.documentElement.style.setProperty("--title-color", "#777777");
+      }
+      if (deckId === "missing-font" || deckId === "clean-fonts") {
+        // Declares a webfont pointing at a 404 asset. "missing-font" uses it
+        // on visible text (load attempted, status "error"); "clean-fonts"
+        // only declares it (status stays "unloaded") and renders with a
+        // system-font fallback family that has no FontFace at all.
+        const fontFace = document.createElement("style");
+        fontFace.textContent =
+          '@font-face { font-family: "Lattice Fixture Missing"; src: url("/decks/missing-font/assets/missing-font.woff2") format("woff2"); }';
+        document.head.appendChild(fontFace);
+      }
+
+      if (deckId === "stall") {
+        document.querySelector("#app").innerHTML =
+          '<section class="slide-canvas"><p>stalled app: never publishes an inspection</p></section>';
+        // Intentionally never install rendered inspection: the headless CLI
+        // must time out waiting for window.__latticeInspection and fail the run.
+      } else {
+        if (deckId === "crash") {
+          // Throw uncaught in a microtask queued during publication: the
+          // report is already set, but the error still fires before the CLI's
+          // next poll, so pageerror capture is deterministic.
+          window.addEventListener("lattice:inspection", () => {
+            queueMicrotask(() => {
+              throw new Error("fixture page crash");
+            });
+          });
+        }
+        renderDeckApp(document.querySelector("#app"), decks[deckId] ?? decks.clean);
+      }
+    </script>
+  </body>
+</html>

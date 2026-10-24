@@ -5,6 +5,7 @@ import renderMathInElement from "katex/contrib/auto-render";
 import "./app.css";
 import {
   renderSlides,
+  applyDeckIdentity,
   createDeckSync,
   createRevealDeck,
 } from "./core.js";
@@ -18,6 +19,7 @@ export function renderDeckApp(container, deckDefinition) {
   const editMode = deckUrl.searchParams.get("edit") === "1";
   const gridOverlayParam = deckUrl.searchParams.get("grid") === "1";
   const slidesMarkup = deckDefinition.buildSlides();
+  applyDeckIdentity(container, deckDefinition.id);
   const sync = createDeckSync(deckDefinition.id);
   const editUrl = `/?deck=${deckDefinition.id}&edit=1${gridOverlayParam ? "&grid=1" : ""}`;
   const viewUrl = `/?deck=${deckDefinition.id}${gridOverlayParam ? "&grid=1" : ""}`;
@@ -265,8 +267,12 @@ export function renderDeckApp(container, deckDefinition) {
 
   const deck = createRevealDeck({ keyboard: !editMode });
 
+  // Headless tooling surface (mirrors window.__latticeInspection): lets the
+  // CLI navigate slides programmatically instead of racing Reveal's own
+  // hash/writeURL management with external location.hash writes.
+  window.__latticeReveal = deck;
   deck.initialize();
-  deck.on("ready", (event) => {
+  deck.on("ready", async (event) => {
     updateCanvasSlideNumbers();
     updateMeta(event.currentSlide);
     updateNotes(event.currentSlide);
@@ -274,7 +280,7 @@ export function renderDeckApp(container, deckDefinition) {
       slideIndex: deck.getIndices().h,
       slideNumber: event.currentSlide?.dataset.slideNumber || "",
     });
-    installRenderedInspection(slidesElement, { deck: deckDefinition.id });
+    await installRenderedInspection(slidesElement, { deck: deckDefinition.id });
   });
   deck.on("slidechanged", (event) => {
     updateCanvasSlideNumbers();

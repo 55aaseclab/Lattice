@@ -4,8 +4,7 @@ import { build, createServer } from "vite";
 import { loadConfig } from "../config/index.js";
 import { DECK_SCHEMA, RUNTIME_VERSION, validateAssets, validateLayoutGrids, validateManifest } from "@55aaseclab/lattice-runtime";
 
-export async function exportCommand({ args }) {
-  const cwd = process.cwd();
+export async function exportCommand({ args, cwd = process.cwd() }) {
   const config = await loadConfig(cwd);
   const deckId = args.deck;
 
@@ -64,10 +63,17 @@ export async function exportCommand({ args }) {
   const builtEntry = fs.existsSync(path.join(buildDir, "entry.html"))
     ? path.join(buildDir, "entry.html")
     : path.join(buildDir, "index.html");
-  assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir });
-  fs.rmSync(workDir, { recursive: true, force: true });
-  const exportRoot = path.dirname(workDir);
-  if (fs.readdirSync(exportRoot).length === 0) fs.rmdirSync(exportRoot);
+  try {
+    assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir });
+  } catch (error) {
+    // Leave no broken export or transient build workspace behind.
+    fs.rmSync(outDir, { recursive: true, force: true });
+    throw error;
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+    const exportRoot = path.dirname(workDir);
+    if (fs.existsSync(exportRoot) && fs.readdirSync(exportRoot).length === 0) fs.rmdirSync(exportRoot);
+  }
 }
 
 async function loadRegistry(cwd, config) {
@@ -103,11 +109,16 @@ function deckStylesPath(cwd, config, deckId) {
 }
 
 function writeStaticEntry(workDir, { theme, styles }) {
+  // CSS cascade order must match the portal's module graph: the renderer's
+  // stylesheets (reveal/white/katex/app) execute FIRST there, and the theme
+  // + deck stylesheets come after. Bundling theme styles before the renderer
+  // inverts the cascade (e.g. `.reveal p` margins would override the theme's
+  // `.ph p { margin: 0 }`) and visibly changes exported slide layout.
   const imports = [
+    `import { bootStaticDeck } from "@55aaseclab/lattice-runtime/renderer";`,
     `import "@55aaseclab/lattice-runtime/themes/${theme}/styles.css";`,
     `import { defaultPalette, palettes } from "@55aaseclab/lattice-runtime/themes/${theme}";`,
     ...(styles ? [`import ${JSON.stringify(path.relative(workDir, styles).split(path.sep).join("/"))};`] : []),
-    `import { bootStaticDeck } from "@55aaseclab/lattice-runtime/renderer";`,
     ``,
     `bootStaticDeck({ themes: palettes, defaultTheme: defaultPalette });`,
   ];
@@ -219,7 +230,12 @@ function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir
     exists: (url) => fs.existsSync(path.join(outDir, url.replace(/^\.\//, ""))),
   });
   if (!assetReport.ok) {
-    console.warn("[lattice] missing assets:", assetReport.errors);
+    // A static export with missing assets is broken output, not a warning:
+    // the exported deck would render with dead references, so fail loudly.
+    throw new Error(
+      `export of deck "${deckId}" is missing ${assetReport.errors.length} asset(s): ` +
+      assetReport.errors.map((error) => error.message).join("; "),
+    );
   }
 
   console.log(`[lattice] exported deck "${deck.id}" to ${outDir}`);
