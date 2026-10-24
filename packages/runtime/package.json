@@ -1,22 +1,10 @@
 {
   "name": "@55aaseclab/lattice-runtime",
   "version": "0.2.0",
+  "private": true,
   "type": "module",
-  "description": "Lattice slide runtime: grid system, layout IR, primitives, themes, HTML/CSS renderer, validator, and Reveal.js integration.",
+  "description": "Archived Lattice slide runtime.",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/55aaseclab/Lattice.git",
-    "directory": "packages/runtime"
-  },
-  "files": [
-    "src/",
-    "themes/",
-    "README.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
   "exports": {
     ".": "./src/index.js",
     "./grid": "./src/grid/index.js",

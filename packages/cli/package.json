@@ -1,21 +1,10 @@
 {
   "name": "@55aaseclab/lattice-cli",
   "version": "0.2.0",
+  "private": true,
   "type": "module",
-  "description": "Lattice CLI: initialize, develop, validate, build, and export native slide projects.",
+  "description": "Archived Lattice CLI.",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/55aaseclab/Lattice.git",
-    "directory": "packages/cli"
-  },
-  "files": [
-    "src/",
-    "README.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
   "bin": {
     "lattice": "./src/index.js"
   },
