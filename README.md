@@ -1,73 +1,62 @@
-# Lattice (archived)
+# Lattice
 
-> [!CAUTION]
-> **Development stopped on 24 October 2026.** This repository is preserved as
-> historical source. No further product development, package releases, or
-> compatibility work is planned.
+Lattice is a Slide-first creation, presentation, validation, and multi-format
+delivery system. It owns Deck, Theme, Template, Presentation, browser
+inspection, screenshot regression, static HTML/PDF/PPTX export, and an
+engine-neutral integer-frame VideoPlan compiler. Remotion and HyperFrames are
+supported as replaceable video backends only; they consume the same VideoPlan
+and the same Slide Web Bundle, and do not define Lattice's Slide model or
+Presentation.
 
-## Why development stopped
+## Historical archive decision (24 October 2026)
 
-Lattice reached a working `v0.2.0` and demonstrated a coherent grid, theme,
-validation, browser inspection, screenshot regression, static export, PDF, and
-editable-PPTX toolchain. The reason for stopping is not that those pieces could
-not be implemented. It is that an independent slide engine was not shown to be
-a necessary product.
+Development was paused after `v0.2.0`. The working grid, theme, validation,
+browser inspection, screenshot regression, static export, PDF, and
+editable-PPTX toolchain demonstrated that an independent slide platform was
+viable. The pause was explicitly:
 
-The proposed next milestones would have created a stable layout and animation
-IR, a clock and Player runtime, deterministic Chromium frame capture, and an
-FFmpeg media pipeline. Remotion already provides the important underlying
-model: React compositions can be previewed in `@remotion/player`, addressed by
-frame, and rendered to stills or media. A thin project-specific React layer can
-add deck navigation, source metadata, notes, captions, or an editable-PPTX
-exporter without owning another general-purpose runtime.
+> Do not build a second video engine. Remotion and HyperFrames already provide
+> mature capture/encode pipelines.
 
-Continuing Lattice would therefore have duplicated a mature engine before we
-had evidence of a distinct user problem or advantage that justified the extra
-schema, compiler, runtime, test matrix, and release surface. The original plan
-started from "an engine already exists" rather than validated demand. That is
-the central failure recorded by this archive.
+The V2.0.0 restart acts on that decision: Lattice returns as a Slide-first
+system, and Remotion/HyperFrames become replaceable video backends that consume
+Lattice's VideoPlan. The archived `v0.2.0` code, tests, and schema remain as
+historical reference; no attempt is made to revive the self-built video engine
+roadmap.
 
-Remotion's core packages use a source-available commercial license, not MIT,
-so any replacement must verify that its license fits the intended use. If it
-does not, the right next step is to evaluate a permissive alternative or reduce
-scope; the licensing concern alone is not evidence that Lattice should be
-resumed.
+## Archive status (preserved history)
 
-## Archive status
-
-- `v0.2.0` remains the last published release.
+- `v0.2.0` was the last published release before archival.
 - Commit `c835ad2` preserves the final rendered-inspection and screenshot-
-  regression work before archival.
+  regression work.
 - At archival, the runtime suite passed 87/87 tests and the CLI suite passed
   47/47 tests.
-- npm publishing automation has been removed and both workspaces are marked
-  private to prevent accidental releases.
-- The examples, package documentation, skill, and changelog remain for
-  inspection and migration only. They are not an active roadmap.
+- Both workspaces remain private; npm publishing is not configured.
 
-Useful pieces may still be extracted, especially the theme tokens, browser
-validation fixtures, screenshot tests, and DOM-to-editable-PPTX exporter. New
-work should begin from a concrete deck and the smallest proven layer above an
-existing renderer, not by reviving the platform plan.
-
-## Historical architecture
-
-Lattice was an AI-native slide system. It owned how slides were created, laid
-out, validated, rendered, and exported; business projects decided what to say
-and which assets to use.
+## Architecture
 
 ```text
-slides business project
-        ↓ package import
-@55aaseclab/lattice-cli + @55aaseclab/lattice-runtime
-        ↓
-Reveal.js + HTML/CSS
+lattice-slides business projects
+        │
+        ▼
+Lattice public contracts/runtime/player/video-plan
+        │
+        ├───────────────┐
+        ▼               ▼
+Remotion adapter   HyperFrames adapter
+        │               │
+        ▼               ▼
+Remotion packages  HyperFrames CLI/packages
 ```
 
-Forbidden reverse dependency:
+Forbidden reverse dependencies:
 
 ```text
-@55aaseclab/lattice-runtime  ✕  business deck content or deck-owned assets
+Lattice runtime/core  ✕  lattice-slides business content
+Slide source          ✕  @remotion/*
+Slide source          ✕  @hyperframes/*
+Presentation Player   ✕  video backend
+VideoPlan             ✕  backend-specific types or seconds
 ```
 
 ## Structure
@@ -75,13 +64,22 @@ Forbidden reverse dependency:
 ```text
 lattice/
 ├── packages/
-│   ├── runtime/     @55aaseclab/lattice-runtime — grid, layout IR, primitives, themes, renderer, validator, deck loading
-│   └── cli/         @55aaseclab/lattice-cli — init, dev, validate, build, export
+│   ├── runtime/     @55aaseclab/lattice-runtime — grid, layout IR, primitives,
+│   │                themes, renderer, validator, deck loading, content-lock,
+│   │                VideoPlan compiler
+│   └── cli/         @55aaseclab/lattice-cli — init, dev, validate, build,
+│                    export, inspect, screenshot, video plan, video doctor,
+│                    video backends
 ├── examples/
 │   └── demo-deck/   minimal standard deck package example
 └── skills/
     └── lattice/     AI workflow skill for native slide work
 ```
+
+## Packages
+
+- **@55aaseclab/lattice-runtime** — 960×540 canvas, grid/area/row/column/span/gap/margin/padding primitives, nested grids, layout IR, the `simple-light` theme, HTML/CSS rendering with Reveal.js integration, layout/asset validation, grid overlay debugging, Content Lock, and engine-neutral VideoPlan compiler.
+- **@55aaseclab/lattice-cli** — `lattice init`, `lattice dev`, `lattice validate`, `lattice build`, `lattice export`, `lattice inspect --rendered`, `lattice screenshot`, `lattice video plan`, `lattice video doctor`.
 
 ## Local inspection
 
@@ -90,23 +88,9 @@ npm install
 npm test
 ```
 
-The archived monorepo builds and tests independently of any business
-repository. These commands are retained to inspect or migrate the preserved
-implementation.
+## Versioning
 
-## Packages
-
-- **@55aaseclab/lattice-runtime** — 960×540 (or configurable) canvas, grid/area/row/column/span/gap/margin/padding primitives, nested grids, layout IR, the `simple-light` theme, HTML/CSS rendering with Reveal.js integration, layout/asset validation, and grid overlay debugging.
-- **@55aaseclab/lattice-cli** — `lattice init`, `lattice dev`, `lattice validate`, `lattice build`, `lattice export`.
-
-## Historical versioning
-
-- patch: bug fixes, no deck schema changes.
-- minor: new capabilities, backwards compatible.
-- major: deck schema or layout IR migrations required.
-
-Runtime and CLI shared the same version. Decks declare a `runtime` range in
-their manifest and the runtime checks compatibility when loading. No new
-versions are planned.
+Runtime and CLI share the same version. Decks declare a `runtime` range in
+their manifest and the runtime checks compatibility when loading.
 
 See [CHANGELOG.md](./CHANGELOG.md) for release notes and migration requirements.

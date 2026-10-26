@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Archived Lattice CLI.",
+  "description": "Lattice CLI — init, dev, validate, build, export, inspect, screenshot, video plan, video doctor.",
   "license": "MIT",
   "bin": {
     "lattice": "./src/index.js"

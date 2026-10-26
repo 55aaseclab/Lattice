@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Archived Lattice native slide system.",
+  "description": "Lattice Slide-first creation, presentation, validation, and multi-format delivery system.",
   "workspaces": [
     "packages/runtime",
     "packages/cli"

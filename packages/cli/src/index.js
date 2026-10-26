@@ -7,6 +7,7 @@ import { validateCommand } from "./commands/validate.js";
 import { previewCommand } from "./commands/preview.js";
 import { inspectCommand } from "./commands/inspect.js";
 import { screenshotCommand } from "./commands/screenshot.js";
+import { videoCommand } from "./commands/video.js";
 
 const commands = {
   init: initCommand,
@@ -17,6 +18,7 @@ const commands = {
   preview: previewCommand,
   inspect: inspectCommand,
   screenshot: screenshotCommand,
+  video: videoCommand,
 };
 
 function parseArgs(argv) {
@@ -43,7 +45,7 @@ function parseArgs(argv) {
 async function main() {
   const [command, ...argv] = process.argv.slice(2);
   if (!command || command === "--help" || command === "help") {
-    console.log(`lattice — native slide system
+    console.log(`lattice — Slide-first creation, presentation, and multi-format delivery system
 
 Usage:
   lattice init <dir> [--theme <name>] [--example <name>] [--local] [--no-install]
@@ -56,15 +58,27 @@ Usage:
   lattice build [--out <dir>]
   lattice export --deck <id> [--out <dir>] [--skip-build]
   lattice preview [--port <port>] [--host <host>]
+  lattice video plan --deck <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
+  lattice video doctor --backend remotion|hyperframes
+
+Video commands (M3):
+  "lattice video plan" compiles an engine-neutral integer-frame VideoPlan
+  without requiring any video backend installed or initialized. It validates
+  the selected route from the descriptor routes map (--route, default "main"),
+  linearises slides into non-overlapping clips, computes totalFrames, bakes
+  provenance from real deck sources and a real Slide Web Bundle identity, and
+  writes deterministic canonical JSON.
+  "lattice video doctor" inspects the selected backend environment. It reports
+  tool presence, versions, paths, and install guidance. It never installs
+  dependencies.
+
+Exit codes: 0=success, 1=content/validation failure, 2=configuration or
+infrastructure failure.
 
 "lattice inspect --rendered" launches headless Chromium, waits for the deck's
 app-ready signal plus fonts and image decode, and collects
 overflow/contrast/density findings as a JSON artifact. --rendered is the
-canonical form (PRD 3.1.4); bare "lattice inspect" is a compatibility alias.
-Unknown options are rejected. Exit code 1 marks blocking findings (including
-uncaught page errors and ready timeouts), 2 an infrastructure error (e.g. no
-Chromium found); stdout always carries the JSON report. console.error noise is
-recorded as diagnostics only.
+canonical form; bare "lattice inspect" is a compatibility alias.
 `);
     return;
   }

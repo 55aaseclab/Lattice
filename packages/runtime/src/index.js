@@ -52,3 +52,21 @@ export {
   installRenderedInspection,
   installDimensionInspection,
 } from "./inspect/index.js";
+export {
+  computeContentFingerprint,
+  computeDeckSemanticPayload,
+  verifyContentLock,
+  createContentLockRecord,
+  formatContentLockDiff,
+  CONTENT_LOCK_VERSION,
+} from "./content-lock/index.js";
+export {
+  VIDEO_PLAN_SCHEMA,
+  compileVideoPlan,
+  validateVideoPlan,
+  serializeVideoPlan,
+  hashVideoPlan,
+  validateRoute,
+  resolveDeckRoutes,
+  bakeVideoPlanProvenance,
+} from "./video-plan/index.js";

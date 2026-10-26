@@ -3,3 +3,4 @@ dist
 tmp
 .lattice-export
 .npm-cache
+.lattice/generated/
