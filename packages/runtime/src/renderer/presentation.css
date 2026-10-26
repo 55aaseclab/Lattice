@@ -1,0 +1,180 @@
+/*
+ * Lattice Presentation (M2) browser surface styles.
+ * Imported explicitly by the hosting page (kept out of presentation-app.js so
+ * the surface module stays importable in plain Node).
+ */
+
+.lattice-presentation {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: #101318;
+  color: #f4f6f8;
+  font-family: system-ui, sans-serif;
+}
+
+.lattice-presentation-stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lattice-presentation-canvas {
+  flex: none;
+  transform: scale(var(--lattice-presentation-scale, 1));
+  transform-origin: center center;
+  background: #ffffff;
+  color: #16181d;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
+}
+
+.lattice-presentation-hud {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(16, 19, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  z-index: 10;
+}
+
+.lattice-presentation-button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.lattice-presentation-button:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 2px;
+}
+
+.lattice-presentation-position {
+  min-width: 9ch;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
+}
+
+.lattice-presentation-routes {
+  position: relative;
+}
+
+.lattice-presentation-routes summary {
+  list-style: none;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.lattice-presentation-routes summary:focus-visible {
+  outline: 2px solid #8ab4ff;
+  outline-offset: 2px;
+}
+
+.lattice-presentation-routes ul {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(16, 19, 24, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  min-width: 12ch;
+}
+
+.lattice-presentation-live-region,
+.lattice-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.lattice-presentation-notes {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  bottom: 72px;
+  width: min(360px, 34vw);
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(16, 19, 24, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  z-index: 10;
+}
+
+.lattice-presentation-notes-title {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.lattice-presentation-notes-body {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.lattice-presentation-error {
+  align-items: center;
+  justify-content: center;
+}
+
+.lattice-presentation-error-card {
+  max-width: 560px;
+  padding: 24px 28px;
+  border-radius: 14px;
+  background: #1a1f27;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.lattice-presentation-error-card h1 {
+  margin-top: 0;
+  font-size: 1.2rem;
+}
+
+.lattice-presentation-error-list {
+  margin: 12px 0;
+  padding-left: 18px;
+}
+
+.lattice-presentation-error-list code {
+  color: #ffb4a9;
+  margin-right: 6px;
+}
+
+.lattice-presentation[data-lattice-fullscreen-active="true"] .lattice-presentation-stage {
+  background: #000000;
+}

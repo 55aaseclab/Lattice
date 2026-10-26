@@ -190,17 +190,50 @@ export function bootDeckPortal({
   themeStorageKey = "lattice-theme",
   enablePptx = true,
   enablePdf = true,
+  v2Decks = null,
 } = {}) {
   const appElement = typeof container === "string" ? document.querySelector(container) : container;
   if (!appElement) throw new Error("[lattice-portal] container not found");
   const url = new URL(window.location.href);
   const selectedDeckId = url.searchParams.get(deckParam);
   const selectedDeck = selectedDeckId ? deckRegistry?.[selectedDeckId] : null;
+  const presentMode = url.searchParams.get("present") === "1";
   const presenterMode = url.searchParams.get("presenter") === "1";
   const motionMode = url.searchParams.get("motion") === "1";
   const pdfRendererMode = url.searchParams.get("export") === "pdf-renderer";
   const gridValidation = validateLayoutGrids();
   if (!gridValidation.ok) console.warn("[lattice] layout grid validation found issues:", gridValidation.errors);
+
+  if (presentMode) {
+    // M2 Lattice Presentation (A14): Lattice-owned, no video backend. An
+    // unknown or missing deck id renders an explicit error — never a
+    // fallback to the v1 deck app or the launcher. Loaded lazily so the v1
+    // deck app client graph never carries the presentation/slide-runtime
+    // modules.
+    import("./presentation-app.js")
+      .then(({ bootPresentation, renderPresentationError }) => {
+        let boot;
+        if (!selectedDeckId) {
+          boot = Promise.resolve(renderPresentationError(appElement, {
+            deckId: null,
+            errors: [{ code: "missing-deck", param: deckParam, value: null, message: `present mode requires a ?${deckParam}=<deck-id> parameter` }],
+          }));
+        } else {
+          boot = bootPresentation(appElement, { deckId: selectedDeckId, v2Decks, presenter: presenterMode });
+        }
+        boot?.catch?.((error) => {
+          console.error("[lattice] presentation failed to start:", error);
+          renderPresentationError(appElement, {
+            deckId: selectedDeckId,
+            errors: [{ code: "boot-failed", message: error?.message ?? String(error) }],
+          });
+        });
+      })
+      .catch((error) => {
+        console.error("[lattice] presentation failed to start:", error);
+      });
+    return { deck: selectedDeck, mode: "presentation", themeController: null };
+  }
 
   const useThemes = isDeckThemeEnabled(selectedDeck, themes);
   const themeController = useThemes ? createThemeController({

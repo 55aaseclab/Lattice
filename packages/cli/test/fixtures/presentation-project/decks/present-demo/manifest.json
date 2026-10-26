@@ -1,0 +1,20 @@
+{
+  "schema": "lattice.deck.v2",
+  "id": "present-demo",
+  "title": "Presentation Fixture",
+  "owner": "lattice",
+  "presenter": "Lattice Fixture",
+  "runtime": "^0.2.0",
+  "theme": "simple-light",
+  "canvas": { "width": 960, "height": 540 },
+  "fps": 30,
+  "entry": {
+    "slides": "./slides.v2.js",
+    "notes": "./notes.js"
+  },
+  "publication": { "audience": "private" },
+  "routes": {
+    "main": ["intro", "timeline", "summary"],
+    "appendix": ["summary", "intro"]
+  }
+}

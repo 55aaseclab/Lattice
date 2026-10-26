@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { initCommand } from "./commands/init.js";
 import { devCommand } from "./commands/dev.js";
+import { presentCommand } from "./commands/present.js";
 import { buildCommand } from "./commands/build.js";
 import { exportCommand } from "./commands/export.js";
 import { validateCommand } from "./commands/validate.js";
@@ -14,6 +15,7 @@ import { ACCUMULATING_FLAGS_BY_COMMAND, parseArgs } from "./args.js";
 const commands = {
   init: initCommand,
   dev: devCommand,
+  present: presentCommand,
   build: buildCommand,
   export: exportCommand,
   validate: validateCommand,
@@ -32,6 +34,7 @@ async function main() {
 Usage:
   lattice init <dir> [--theme <name>] [--example <name>] [--local] [--no-install]
   lattice dev [--port <port>] [--host <host>] [--deck <id>] [--grid] [--open]
+  lattice present --deck <id> [--route <name>] [--presenter] [--port <port>] [--host <host>] [--open]
   lattice validate [--deck <id>]
   lattice inspect --rendered [--deck <id>] [--out <file>] [--timeout <ms>]
                   [--browser <path>] [--base-url <url>] [--port <port>] [--host <host>]
@@ -58,6 +61,12 @@ Video commands (M3):
 
 Exit codes: 0=success, 1=content/validation failure, 2=configuration or
 infrastructure failure.
+
+"lattice present --deck <id>" starts the project server and opens the
+Lattice Presentation for one lattice.deck.v2 deck: page/step navigation,
+jump/play stops, branches, presenter notes, URL restore. It requires no
+video backend installed or initialized; a v1 deck fails with explicit
+migration guidance instead of being silently presented.
 
 "lattice inspect --rendered" launches headless Chromium, waits for the deck's
 app-ready signal plus fonts and image decode, and collects

@@ -8,6 +8,10 @@ export {
 } from "./core.js";
 export { renderDeckApp } from "./deck-app.js";
 export { renderPresenterApp } from "./presenter-app.js";
+// The M2 presentation surface is intentionally NOT exported here: it depends
+// on the slide runtime (and deck-v2), and a static re-export would pull that
+// graph into every v1 deck page. Import the dedicated subpath instead:
+//   "@55aaseclab/lattice-runtime/renderer/presentation-app"
 export { bootStaticDeck } from "./static.js";
 export { initInteractiveTrendCharts, initInteractiveAnnotations } from "./interactive.js";
 export { initSlideEditor } from "./editor.js";
