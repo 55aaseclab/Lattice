@@ -8,6 +8,8 @@ import { previewCommand } from "./commands/preview.js";
 import { inspectCommand } from "./commands/inspect.js";
 import { screenshotCommand } from "./commands/screenshot.js";
 import { videoCommand } from "./commands/video.js";
+import { migrateCommand } from "./commands/migrate.js";
+import { ACCUMULATING_FLAGS_BY_COMMAND, parseArgs } from "./args.js";
 
 const commands = {
   init: initCommand,
@@ -19,28 +21,8 @@ const commands = {
   inspect: inspectCommand,
   screenshot: screenshotCommand,
   video: videoCommand,
+  migrate: migrateCommand,
 };
-
-function parseArgs(argv) {
-  const args = {};
-  const rest = [];
-  for (let index = 0; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token.startsWith("--")) {
-      const key = token.slice(2);
-      const next = argv[index + 1];
-      if (next !== undefined && !next.startsWith("--")) {
-        args[key] = next;
-        index += 1;
-      } else {
-        args[key] = true;
-      }
-    } else {
-      rest.push(token);
-    }
-  }
-  return { args, rest };
-}
 
 async function main() {
   const [command, ...argv] = process.argv.slice(2);
@@ -57,6 +39,8 @@ Usage:
                      [--out <dir>] [--report <file>] [--max-diff-ratio <n>] [--timeout <ms>]
   lattice build [--out <dir>]
   lattice export --deck <id> [--out <dir>] [--skip-build]
+  lattice migrate --deck <id> [--slide <id>]... [--slides-module <path>]
+                  [--report-dir <dir>] [--dry-run]
   lattice preview [--port <port>] [--host <host>]
   lattice video plan --deck <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
   lattice video doctor --backend remotion|hyperframes
@@ -87,7 +71,9 @@ canonical form; bare "lattice inspect" is a compatibility alias.
     console.error(`[lattice] unknown command: ${command}`);
     process.exit(1);
   }
-  const { args, rest } = parseArgs(argv);
+  const { args, rest } = parseArgs(argv, {
+    accumulate: ACCUMULATING_FLAGS_BY_COMMAND.get(command) ?? new Set(),
+  });
   await handler({ args, rest });
 }
 

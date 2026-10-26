@@ -358,6 +358,133 @@ export function verifyContentLock(fingerprint, stored) {
   return { ok: true };
 }
 
+// ---- Frozen content-identity continuity (v1 identity vs live v2) ----
+// Content Lock v4 fingerprints were computed from the v1 manifest's semantic
+// fields. The explicit v1→v2 migration rewrites manifest.json structurally, so
+// migrated decks verify against the frozen contentIdentityManifest recorded in
+// the deterministic migration report. For that verification to actually govern
+// the live deck, the live v2 manifest must agree with the frozen v1 identity on
+// every content-bearing field. This module is the single source of that
+// continuity rule: lock-update, the migrate command, and tests all call it so
+// they cannot drift.
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export const CONTENT_IDENTITY_LIVE_SCHEMA = "lattice.deck.v2";
+
+export const CONTENT_IDENTITY_IDENTITY_SCHEMA = "lattice.deck.v1";
+
+// Semantic, content-bearing manifest fields shared between v1 and v2. Theme is
+// presentation state for the fingerprint itself, but it is still frozen deck
+// identity: a migrated deck must not silently retheme. Runtime/assets/entry/
+// canvas/fps/routes are structural or explicitly non-semantic and are excluded.
+export const CONTENT_IDENTITY_FIELDS = Object.freeze([
+  "id",
+  "title",
+  "owner",
+  "presenter",
+  "theme",
+  "description",
+  "sources",
+  "references",
+]);
+
+function fieldDiffs(identity, liveManifest) {
+  const diffs = [];
+  for (const field of CONTENT_IDENTITY_FIELDS) {
+    const identityValue = identity[field];
+    const liveValue = liveManifest[field];
+    if (identityValue === undefined && liveValue === undefined) continue;
+    if (identityValue === undefined || liveValue === undefined) {
+      diffs.push(field);
+      continue;
+    }
+    if (stableStringify(identityValue) !== stableStringify(liveValue)) diffs.push(field);
+  }
+  return diffs;
+}
+
+// Conservative deterministic publication mapping. A v1 deck without
+// publication metadata must land on exactly { audience: "private" } — never a
+// widened variant, never extra keys. A v1 deck WITH publication metadata must
+// keep it byte-for-byte (semantically): migration may not overwrite it.
+export function publicationContinuityDiff(identity, liveManifest) {
+  const identityPublication = identity.publication;
+  const livePublication = liveManifest.publication;
+  if (identityPublication === undefined) {
+    const expected = stableStringify({ audience: "private" });
+    if (livePublication === undefined || stableStringify(livePublication) !== expected) {
+      return "publication (v1 had none; v2 must be exactly { audience: \"private\" })";
+    }
+    return null;
+  }
+  if (livePublication === undefined || stableStringify(identityPublication) !== stableStringify(livePublication)) {
+    return "publication (v1 publication metadata must be preserved, not overwritten)";
+  }
+  return null;
+}
+
+/**
+ * Full frozen semantic continuity check between the frozen v1 identity and the
+ * live v2 manifest. Returns the list of continuity violations (empty = ok).
+ */
+export function contentIdentityContinuityDiffs(identity, liveManifest) {
+  if (!isPlainObject(identity) || !isPlainObject(liveManifest)) {
+    return ["identity and live manifest must be JSON objects"];
+  }
+  const diffs = fieldDiffs(identity, liveManifest);
+  const publicationDiff = publicationContinuityDiff(identity, liveManifest);
+  if (publicationDiff) diffs.push(publicationDiff);
+  return diffs;
+}
+
+/**
+ * Resolve the manifest a Content Lock must be verified against.
+ *
+ * - No migration report (or none for this deck) → verify against the live
+ *   manifest, exactly like decks that were never migrated.
+ * - A migration report that is present but not a valid v1 report for this
+ *   deck, or whose frozen identity disagrees with the live v2 manifest on any
+ *   content-bearing field → ok:false. Verification must never silently
+ *   proceed against a drifted identity.
+ */
+export function resolveContentIdentityManifest({ liveManifest, migrationReport, deckId = "" } = {}) {
+  if (!isPlainObject(liveManifest)) {
+    return { ok: false, reason: "invalid-live-manifest", diffs: [], manifest: null };
+  }
+  if (migrationReport === undefined || migrationReport === null) {
+    return { ok: true, manifest: liveManifest, diffs: [], identityUsed: false };
+  }
+  if (!isPlainObject(migrationReport)) {
+    return { ok: false, reason: "invalid-migration-report", diffs: [], manifest: null };
+  }
+  if (
+    migrationReport.reportSchema !== "lattice.migration-report.v1" ||
+    migrationReport.fromSchema !== CONTENT_IDENTITY_IDENTITY_SCHEMA ||
+    migrationReport.toSchema !== CONTENT_IDENTITY_LIVE_SCHEMA ||
+    !isPlainObject(migrationReport.contentIdentityManifest)
+  ) {
+    return { ok: false, reason: "invalid-migration-report", diffs: [], manifest: null };
+  }
+  if (deckId && migrationReport.deckId !== deckId) {
+    return { ok: false, reason: "migration-report-deck-mismatch", diffs: [], manifest: null };
+  }
+  const identity = migrationReport.contentIdentityManifest;
+  if (identity.schema !== CONTENT_IDENTITY_IDENTITY_SCHEMA) {
+    return { ok: false, reason: "migration-report-identity-not-v1", diffs: [], manifest: null };
+  }
+  if (liveManifest.schema !== CONTENT_IDENTITY_LIVE_SCHEMA) {
+    return { ok: false, reason: "live-manifest-not-v2", diffs: [], manifest: null };
+  }
+  const diffs = contentIdentityContinuityDiffs(identity, liveManifest);
+  if (diffs.length > 0) {
+    return { ok: false, reason: "content-identity-continuity-failed", diffs, manifest: null };
+  }
+  return { ok: true, manifest: identity, diffs: [], identityUsed: true };
+}
+
 export function createContentLockRecord(content, manifest, notes, slideOutputs, meta = {}) {
   const fingerprint = computeContentFingerprint(content, manifest, notes, slideOutputs);
   return {

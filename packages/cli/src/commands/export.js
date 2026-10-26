@@ -2,7 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { build, createServer } from "vite";
 import { loadConfig } from "../config/index.js";
-import { DECK_SCHEMA, RUNTIME_VERSION, validateAssets, validateLayoutGrids, validateManifest } from "@55aaseclab/lattice-runtime";
+import {
+  DECK_SCHEMA,
+  RUNTIME_VERSION,
+  validateAssets,
+  validateDeckManifestV2,
+  validateLayoutGrids,
+  validateManifest,
+} from "@55aaseclab/lattice-runtime";
 
 export async function exportCommand({ args, cwd = process.cwd() }) {
   const config = await loadConfig(cwd);
@@ -24,10 +31,13 @@ export async function exportCommand({ args, cwd = process.cwd() }) {
   const deckDir = path.resolve(cwd, config.decksDir, deckId);
   const manifestPath = path.join(deckDir, "manifest.json");
   if (fs.existsSync(manifestPath)) {
-    const manifestReport = validateManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8")), {
-      expectedId: deckId,
-      runtimeVersion: RUNTIME_VERSION,
-    });
+    const sourceManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    // Schema dispatch is explicit: each validator only accepts the schema it
+    // is named for. The exported Slide Web Bundle keeps its own frozen
+    // contract (see assembleOutput) regardless of source schema.
+    const manifestReport = sourceManifest.schema === "lattice.deck.v2"
+      ? validateDeckManifestV2(sourceManifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION })
+      : validateManifest(sourceManifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION });
     if (!manifestReport.ok) {
       console.error(`[lattice] deck "${deckId}" manifest is invalid:`);
       for (const error of manifestReport.errors) console.error(`  - [${error.type}] ${error.message}`);

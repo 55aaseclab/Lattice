@@ -8,6 +8,7 @@ import {
   VIDEO_PLAN_SCHEMA,
 } from "@55aaseclab/lattice-runtime/video-plan";
 import { RUNTIME_VERSION } from "@55aaseclab/lattice-runtime/deck";
+import { DECK_SCHEMA_V2 } from "@55aaseclab/lattice-runtime/deck-v2";
 import { validateSlideWebBundle } from "../video/bundle.js";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -109,6 +110,70 @@ function resolveVideoPlanDescriptor(contentMod, deckId) {
   console.error(`[lattice] deck "${deckId}" does not provide a videoPlan descriptor.`);
   console.error(DECK_V1_VIDEOPLAN_REQUIRED);
   process.exit(1);
+}
+
+/**
+ * v2 descriptor source: the manifest itself (routes, fps, canvas) plus the
+ * canonical slide definitions (durationFrames, inputProps). The slide entry
+ * module is loaded through the project's vite pipeline so CSS-importing
+ * slide sources behave exactly like every other Lattice surface.
+ */
+async function descriptorFromDeckV2({ deckId, deckDir, manifest }) {
+  const entrySlides = manifest.entry?.slides;
+  if (typeof entrySlides !== "string" || entrySlides === "") {
+    console.error(`[lattice] deck "${deckId}" (lattice.deck.v2) must declare manifest.entry.slides`);
+    process.exit(1);
+  }
+  const { createProjectModuleLoader } = await import("../deck-v2/project-module-loader.js");
+  const loader = await createProjectModuleLoader(process.cwd());
+  try {
+    const module = await loader.load(path.resolve(deckDir, entrySlides));
+    const slideDefinitions = module?.slideDefinitions;
+    if (!Array.isArray(slideDefinitions) || slideDefinitions.length === 0) {
+      console.error(`[lattice] deck "${deckId}": ${entrySlides} must export a non-empty slideDefinitions array (lattice.deck.v2)`);
+      process.exit(1);
+    }
+    for (const slide of slideDefinitions) {
+      if (!slide || typeof slide !== "object" || typeof slide.id !== "string" || slide.id === "") {
+        console.error(`[lattice] deck "${deckId}": slide definitions must carry non-empty string ids`);
+        process.exit(1);
+      }
+      if (typeof slide.durationFrames !== "number" || !Number.isInteger(slide.durationFrames) || slide.durationFrames <= 0) {
+        console.error(`[lattice] deck "${deckId}": slide "${slide.id}" must have a positive integer durationFrames, got ${slide.durationFrames}`);
+        process.exit(1);
+      }
+    }
+    return {
+      routes: manifest.routes,
+      slides: slideDefinitions.map((slide) => ({
+        id: slide.id,
+        durationFrames: slide.durationFrames,
+        inputProps: slide.inputProps,
+      })),
+      fps: manifest.fps,
+      width: manifest.canvas?.width,
+      height: manifest.canvas?.height,
+      audioTracks: manifest.audioTracks,
+      inputProps: manifest.inputProps,
+    };
+  } catch (error) {
+    console.error(`[lattice] cannot import ${entrySlides} for "${deckId}": ${error.message}`);
+    process.exit(2);
+  } finally {
+    await loader.close();
+  }
+}
+
+function normalizeDescriptor({ descriptor }) {
+  return {
+    routes: descriptor.routes,
+    slides: descriptor.slides,
+    fps: descriptor.fps,
+    width: descriptor.width,
+    height: descriptor.height,
+    audioTracks: descriptor.audioTracks,
+    inputProps: descriptor.inputProps,
+  };
 }
 
 function deckSourceFailure(relPath, reason) {
@@ -255,45 +320,59 @@ async function handleVideoPlan({ args }) {
     process.exit(2);
   }
 
-  if (!manifest || manifest.schema !== "lattice.deck.v1") {
-    console.error(`[lattice] deck "${deckId}" uses unsupported schema. Only lattice.deck.v1 is supported by the current deck loader.`);
+  if (!manifest || (manifest.schema !== "lattice.deck.v1" && manifest.schema !== DECK_SCHEMA_V2)) {
+    console.error(`[lattice] deck "${deckId}" uses unsupported schema. Only lattice.deck.v1 and lattice.deck.v2 are supported by the current deck loader.`);
     process.exit(1);
   }
 
-  let contentMod;
-  try {
-    const contentPath = new URL(manifest.entry.content, `file://${deckDir}/`).pathname;
-    contentMod = await import(contentPath);
-  } catch (error) {
-    console.error(`[lattice] cannot import content.js for "${deckId}": ${error.message}`);
-    process.exit(2);
+  let descriptor;
+  let descriptorOrigin;
+  if (manifest.schema === DECK_SCHEMA_V2) {
+    // v2 decks are self-describing: routes, fps, and canvas live in the
+    // manifest, slide timing in the canonical slide definitions. No content.js
+    // videoPlan descriptor is consulted, and nothing is inferred.
+    descriptor = await descriptorFromDeckV2({ deckId, deckDir, manifest });
+    descriptorOrigin = "lattice.deck.v2 manifest + slide definitions";
+  } else {
+    let contentMod;
+    try {
+      const contentPath = new URL(manifest.entry.content, `file://${deckDir}/`).pathname;
+      contentMod = await import(contentPath);
+    } catch (error) {
+      console.error(`[lattice] cannot import content.js for "${deckId}": ${error.message}`);
+      process.exit(2);
+    }
+    const resolved = resolveVideoPlanDescriptor(contentMod, deckId);
+    descriptor = resolved.descriptor;
+    descriptorOrigin = resolved.origin;
   }
 
-  const { descriptor, origin } = resolveVideoPlanDescriptor(contentMod, deckId);
+  const { routes: descriptorRoutes, slides: descriptorSlides, fps, width, height, audioTracks, inputProps } =
+    await normalizeDescriptor({ descriptor, deckId, manifest });
 
-  if (!descriptor.routes || typeof descriptor.routes !== "object" || Array.isArray(descriptor.routes)) {
+  if (!descriptorRoutes || typeof descriptorRoutes !== "object" || Array.isArray(descriptorRoutes)) {
     console.error("[lattice] videoPlan descriptor must have a 'routes' map (object), e.g. routes: { main: [...] }");
     process.exit(1);
   }
 
-  if (descriptor.routes[chosenRouteId] === undefined) {
-    const available = Object.keys(descriptor.routes);
+  if (descriptorRoutes[chosenRouteId] === undefined) {
+    const available = Object.keys(descriptorRoutes);
     console.error(`[lattice] route "${chosenRouteId}" not found in videoPlan descriptor. Available routes: ${available.length ? available.join(", ") : "(none)"}`);
     process.exit(2);
   }
 
-  const routeArray = descriptor.routes[chosenRouteId];
+  const routeArray = descriptorRoutes[chosenRouteId];
   if (!Array.isArray(routeArray) || routeArray.length === 0) {
     console.error(`[lattice] route "${chosenRouteId}" must be a non-empty array of slide ids`);
     process.exit(1);
   }
 
-  if (!descriptor.slides || !Array.isArray(descriptor.slides) || descriptor.slides.length === 0) {
+  if (!descriptorSlides || !Array.isArray(descriptorSlides) || descriptorSlides.length === 0) {
     console.error("[lattice] videoPlan descriptor must have a non-empty slides array");
     process.exit(1);
   }
 
-  for (const s of descriptor.slides) {
+  for (const s of descriptorSlides) {
     if (!s || typeof s !== "object") {
       console.error("[lattice] videoPlan descriptor slides must be objects");
       process.exit(1);
@@ -311,17 +390,17 @@ async function handleVideoPlan({ args }) {
   const planResult = compileVideoPlan({
     deckId,
     routeId: chosenRouteId,
-    routes: descriptor.routes,
-    slides: descriptor.slides.map((s) => ({
+    routes: descriptorRoutes,
+    slides: descriptorSlides.map((s) => ({
       id: s.id,
       durationFrames: s.durationFrames,
       inputProps: s.inputProps ?? {},
     })),
-    width: descriptor.width ?? 960,
-    height: descriptor.height ?? 540,
-    fps: descriptor.fps ?? 30,
-    audioTracks: descriptor.audioTracks ?? [],
-    inputProps: descriptor.inputProps ?? {},
+    width: width ?? 960,
+    height: height ?? 540,
+    fps: fps ?? 30,
+    audioTracks: audioTracks ?? [],
+    inputProps: inputProps ?? {},
   });
 
   if (!planResult.ok) {
@@ -381,7 +460,7 @@ async function handleVideoPlan({ args }) {
     console.log(`  totalFrames: ${completePlan.totalFrames}`);
     console.log(`  fps: ${completePlan.fps}`);
     console.log(`  clips: ${completePlan.clips.length}`);
-    console.log(`  descriptor: ${origin}`);
+    console.log(`  descriptor: ${descriptorOrigin}`);
   } else {
     process.stdout.write(output + "\n");
   }

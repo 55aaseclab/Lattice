@@ -6,6 +6,9 @@ import {
   verifyContentLock,
   createContentLockRecord,
   formatContentLockDiff,
+  contentIdentityContinuityDiffs,
+  publicationContinuityDiff,
+  resolveContentIdentityManifest,
   CONTENT_LOCK_VERSION,
 } from "../src/content-lock/index.js";
 
@@ -548,4 +551,179 @@ test("aria-labelledby values do not leak into the aria-label channel", () => {
     manifest: sampleManifest,
   });
   assert.deepEqual(payload.slides[0].ariaLabels, []);
+});
+
+// ---- Frozen content-identity continuity (A07/A13) ----
+
+const identityManifest = () => ({
+  schema: "lattice.deck.v1",
+  id: "continuity-deck",
+  title: "Continuity Deck",
+  owner: "qiang",
+  presenter: "Qiang Liu",
+  runtime: "^0.2.0",
+  theme: "simple-light",
+  entry: { content: "./content.js", layout: "./layout.js", notes: "./notes.js" },
+  assets: "./assets/",
+});
+
+const liveV2FromIdentity = (identity, overrides = {}) => ({
+  schema: "lattice.deck.v2",
+  id: identity.id,
+  title: identity.title,
+  owner: identity.owner,
+  presenter: identity.presenter,
+  runtime: identity.runtime,
+  theme: identity.theme,
+  canvas: { width: 960, height: 540 },
+  fps: 30,
+  entry: { slides: "./slides.v2.js", ...identity.entry },
+  publication: { audience: "private" },
+  routes: { main: ["intro", "chart"] },
+  assets: identity.assets,
+  ...overrides,
+});
+
+const migrationReportFor = (identity) => ({
+  reportSchema: "lattice.migration-report.v1",
+  deckId: identity.id,
+  fromSchema: "lattice.deck.v1",
+  toSchema: "lattice.deck.v2",
+  changedFiles: ["manifest.json"],
+  slideIds: ["intro", "chart"],
+  contentIdentityManifest: identity,
+});
+
+test("resolveContentIdentityManifest verifies against the frozen v1 identity for migrated decks", () => {
+  const identity = identityManifest();
+  const live = liveV2FromIdentity(identity);
+  const resolved = resolveContentIdentityManifest({ liveManifest: live, migrationReport: migrationReportFor(identity), deckId: identity.id });
+  assert.equal(resolved.ok, true, JSON.stringify(resolved));
+  assert.equal(resolved.identityUsed, true);
+  assert.deepEqual(resolved.manifest, identity);
+});
+
+test("resolveContentIdentityManifest falls back to the live manifest when no migration report exists", () => {
+  const live = liveV2FromIdentity(identityManifest());
+  const resolved = resolveContentIdentityManifest({ liveManifest: live, migrationReport: null, deckId: live.id });
+  assert.equal(resolved.ok, true);
+  assert.equal(resolved.identityUsed, false);
+  assert.equal(resolved.manifest, live);
+});
+
+test("resolveContentIdentityManifest fails closed on a present-but-invalid migration report", () => {
+  const live = liveV2FromIdentity(identityManifest());
+  for (const report of [
+    {},
+    { reportSchema: "lattice.migration-report.v1" },
+    { reportSchema: "other", contentIdentityManifest: {} },
+    { ...migrationReportFor(identityManifest()), deckId: undefined },
+    { ...migrationReportFor(identityManifest()), fromSchema: "lattice.deck.v999" },
+    { ...migrationReportFor(identityManifest()), toSchema: "lattice.deck.v999" },
+  ]) {
+    const resolved = resolveContentIdentityManifest({ liveManifest: live, migrationReport: report, deckId: live.id });
+    assert.equal(resolved.ok, false, `report ${JSON.stringify(report)} must not be silently accepted`);
+  }
+  const wrongDeck = resolveContentIdentityManifest({ liveManifest: live, migrationReport: migrationReportFor(identityManifest()), deckId: "other-deck" });
+  assert.equal(wrongDeck.ok, false);
+  assert.equal(wrongDeck.reason, "migration-report-deck-mismatch");
+});
+
+test("resolveContentIdentityManifest requires the live manifest to be v2 and the identity to be v1", () => {
+  const identity = identityManifest();
+  const v1Live = resolveContentIdentityManifest({ liveManifest: { ...identity }, migrationReport: migrationReportFor(identity), deckId: identity.id });
+  assert.equal(v1Live.ok, false);
+  assert.equal(v1Live.reason, "live-manifest-not-v2");
+
+  const badIdentity = migrationReportFor(identity);
+  badIdentity.contentIdentityManifest = { ...identity, schema: "lattice.deck.v9" };
+  const resolved = resolveContentIdentityManifest({ liveManifest: liveV2FromIdentity(identity), migrationReport: badIdentity, deckId: identity.id });
+  assert.equal(resolved.ok, false);
+  assert.equal(resolved.reason, "migration-report-identity-not-v1");
+});
+
+test("mutations to every pre-existing content-bearing manifest field break continuity (A07)", () => {
+  const identity = identityManifest();
+  const mutations = {
+    id: (live) => ({ ...live, id: "renamed-deck" }),
+    title: (live) => ({ ...live, title: "Retitled" }),
+    owner: (live) => ({ ...live, owner: "someone-else" }),
+    presenter: (live) => ({ ...live, presenter: "Another Presenter" }),
+    theme: (live) => ({ ...live, theme: "midnight" }),
+    description: (live) => ({ ...live, description: "new copy" }),
+    // v1 identity has no sources/references: adding them post-migration is drift.
+    sources: (live) => ({ ...live, sources: { note: "added later" } }),
+    references: (live) => ({ ...live, references: { note: "added later" } }),
+  };
+  for (const [field, mutate] of Object.entries(mutations)) {
+    const resolved = resolveContentIdentityManifest({
+      liveManifest: mutate(liveV2FromIdentity(identity)),
+      migrationReport: migrationReportFor(identity),
+      deckId: identity.id,
+    });
+    assert.equal(resolved.ok, false, `mutation of ${field} must break continuity`);
+    assert.equal(resolved.reason, "content-identity-continuity-failed");
+    assert.ok(resolved.diffs.some((diff) => diff.includes(field)), `diffs must name ${field}: ${JSON.stringify(resolved.diffs)}`);
+  }
+
+  // Removing a field the v1 identity had is equally a continuity break.
+  const dropped = liveV2FromIdentity(identity);
+  delete dropped.owner;
+  const removed = resolveContentIdentityManifest({ liveManifest: dropped, migrationReport: migrationReportFor(identity), deckId: identity.id });
+  assert.equal(removed.ok, false);
+  assert.ok(removed.diffs.includes("owner"));
+});
+
+test("publication continuity: no v1 publication maps to exactly { audience: 'private' } (A07)", () => {
+  const identity = identityManifest();
+  const ok = resolveContentIdentityManifest({ liveManifest: liveV2FromIdentity(identity), migrationReport: migrationReportFor(identity), deckId: identity.id });
+  assert.equal(ok.ok, true);
+
+  for (const publication of [
+    undefined,
+    { audience: "public" },
+    { audience: "internal" },
+    { audience: "private", rights: "CC-BY-4.0" },
+  ]) {
+    const resolved = resolveContentIdentityManifest({
+      liveManifest: liveV2FromIdentity(identity, { publication }),
+      migrationReport: migrationReportFor(identity),
+      deckId: identity.id,
+    });
+    assert.equal(resolved.ok, false, `publication ${JSON.stringify(publication ?? null)} must break the conservative private mapping`);
+    assert.ok(resolved.diffs.some((diff) => diff.startsWith("publication")));
+  }
+});
+
+test("publication continuity: v1 publication metadata must be preserved verbatim (A07)", () => {
+  const identity = { ...identityManifest(), publication: { audience: "internal", rights: "internal-only" } };
+  const preserved = resolveContentIdentityManifest({
+    liveManifest: liveV2FromIdentity(identity, { publication: { audience: "internal", rights: "internal-only" } }),
+    migrationReport: migrationReportFor(identity),
+    deckId: identity.id,
+  });
+  assert.equal(preserved.ok, true, JSON.stringify(preserved));
+
+  for (const publication of [
+    { audience: "private" },
+    { audience: "public" },
+    { audience: "internal", rights: "changed" },
+  ]) {
+    const overwritten = resolveContentIdentityManifest({
+      liveManifest: liveV2FromIdentity(identity, { publication }),
+      migrationReport: migrationReportFor(identity),
+      deckId: identity.id,
+    });
+    assert.equal(overwritten.ok, false, `overwriting v1 publication with ${JSON.stringify(publication)} must break continuity`);
+  }
+});
+
+test("contentIdentityContinuityDiffs and publicationContinuityDiff are directly inspectable", () => {
+  const identity = identityManifest();
+  assert.deepEqual(publicationContinuityDiff(identity, liveV2FromIdentity(identity)), null);
+  assert.match(publicationContinuityDiff(identity, liveV2FromIdentity(identity, { publication: { audience: "public" } })), /must be exactly/);
+  assert.deepEqual(
+    contentIdentityContinuityDiffs(identity, liveV2FromIdentity(identity, { owner: "drifted" })),
+    ["owner"],
+  );
 });

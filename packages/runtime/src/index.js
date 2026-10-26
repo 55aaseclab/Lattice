@@ -1,5 +1,35 @@
 export { DECK_SCHEMA, RUNTIME_VERSION, isRuntimeCompatible, validateManifest, loadDeckPackage } from "./deck/index.js";
 export {
+  DECK_SCHEMA_V2,
+  FRAME_ADDRESS_VARIABLES,
+  PUBLICATION_AUDIENCES,
+  STOP_NAVIGATION_MODES,
+  assertFrameAddress,
+  createFrameAddress,
+  formatFrameAddress,
+  isFrameAddress,
+  isStableDeckId,
+  loadDeckV2,
+  validateDeckManifestV2,
+  validateSlideDefinition,
+  validateSlideDefinitions,
+} from "./deck-v2/index.js";
+export {
+  computeSlideFrameState,
+  createSlideResourcesWaiter,
+  createSlideRuntime,
+  resolveSlideHtml,
+  snapshotSlideFrameState,
+  waitForSlideResources,
+} from "./slide-runtime/index.js";
+export {
+  V2_TIMING_STATIC,
+  buildMigrationReport,
+  hashMigrationReport,
+  migrateDeckV1ToV2,
+  serializeMigrationReport,
+} from "./migration/v1-to-v2.js";
+export {
   SLIDE_CANVAS,
   gridSpacingTokens,
   defineGrid,
@@ -58,6 +88,12 @@ export {
   verifyContentLock,
   createContentLockRecord,
   formatContentLockDiff,
+  contentIdentityContinuityDiffs,
+  publicationContinuityDiff,
+  resolveContentIdentityManifest,
+  CONTENT_IDENTITY_FIELDS,
+  CONTENT_IDENTITY_IDENTITY_SCHEMA,
+  CONTENT_IDENTITY_LIVE_SCHEMA,
   CONTENT_LOCK_VERSION,
 } from "./content-lock/index.js";
 export {

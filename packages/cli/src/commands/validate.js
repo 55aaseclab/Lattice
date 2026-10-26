@@ -1,18 +1,21 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createServer } from "vite";
 import { loadConfig, resolveRuntimeRoot } from "../config/index.js";
+import { createProjectModuleLoader } from "../deck-v2/project-module-loader.js";
 import {
   DECK_SCHEMA,
+  DECK_SCHEMA_V2,
   RUNTIME_VERSION,
   createValidationIssue,
   defineGrid,
   formatValidationIssue,
   validateAssets,
+  validateDeckManifestV2,
   validateGridPlacements,
   validateLayoutGrids,
   validateManifest,
+  validateSlideDefinitions,
 } from "@55aaseclab/lattice-runtime";
 
 export async function validateCommand({ args }) {
@@ -21,16 +24,26 @@ export async function validateCommand({ args }) {
   const decksDir = path.resolve(cwd, config.decksDir);
   const runtimeRoot = resolveRuntimeRoot();
   const errors = [];
+  const validatedSchemas = new Set();
 
   const gridReport = validateLayoutGrids();
   if (!gridReport.ok) errors.push(...gridReport.errors);
 
-  const registry = await loadRegistry(cwd, config, errors);
-  const themeTemplates = await loadThemeTemplates(runtimeRoot, config.theme, errors);
+  // One shared vite module pipeline serves the registry and every v2 slide
+  // entry import for this run.
+  const moduleLoader = await createProjectModuleLoader(cwd);
+  let validatedDeckCount = 0;
+  try {
+    const registry = await loadRegistry(cwd, config, errors, moduleLoader);
+    const themeTemplates = await loadThemeTemplates(runtimeRoot, config.theme, errors);
 
-  const deckIds = args.deck ? [args.deck] : listDeckIds(decksDir);
-  for (const deckId of deckIds) {
-    await validateDeck({ deckId, decksDir, registry, themeTemplates, runtimeRoot, config, errors });
+    const deckIds = args.deck ? [args.deck] : listDeckIds(decksDir);
+    for (const deckId of deckIds) {
+      await validateDeck({ deckId, decksDir, registry, themeTemplates, runtimeRoot, config, errors, moduleLoader, validatedSchemas });
+      validatedDeckCount += 1;
+    }
+  } finally {
+    await moduleLoader.close();
   }
 
   if (errors.length > 0) {
@@ -38,7 +51,8 @@ export async function validateCommand({ args }) {
     for (const error of errors) console.error(`  - ${formatValidationIssue(error)}`);
     process.exit(1);
   }
-  console.log(`[lattice] validation passed (${deckIds.length} deck(s), schema ${DECK_SCHEMA}, runtime ${RUNTIME_VERSION})`);
+  const schemaSummary = [...validatedSchemas].sort().join(", ") || DECK_SCHEMA;
+  console.log(`[lattice] validation passed (${validatedDeckCount} deck(s), schemas ${schemaSummary}, runtime ${RUNTIME_VERSION})`);
 }
 
 function listDeckIds(decksDir) {
@@ -49,7 +63,7 @@ function listDeckIds(decksDir) {
     .map((entry) => entry.name);
 }
 
-async function loadRegistry(cwd, config, errors) {
+async function loadRegistry(cwd, config, errors, moduleLoader) {
   if (!config.registry) return null;
   const registryPath = path.resolve(cwd, config.registry);
   if (!fs.existsSync(registryPath)) {
@@ -61,17 +75,8 @@ async function loadRegistry(cwd, config, errors) {
     return null;
   }
   try {
-    const server = await createServer({
-      root: cwd,
-      appType: "custom",
-      server: { middlewareMode: true },
-    });
-    try {
-      const module = await server.ssrLoadModule(`/${path.relative(cwd, registryPath).split(path.sep).join("/")}`);
-      return module.deckRegistry ?? null;
-    } finally {
-      await server.close();
-    }
+    const module = await moduleLoader.load(registryPath);
+    return module.deckRegistry ?? null;
   } catch (error) {
     errors.push(createValidationIssue({
       type: "registry-import-failed",
@@ -105,7 +110,7 @@ async function loadThemeTemplates(runtimeRoot, theme, errors) {
   }
 }
 
-async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtimeRoot, config, errors }) {
+async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtimeRoot, config, errors, moduleLoader, validatedSchemas }) {
   const deckDir = path.join(decksDir, deckId);
   const manifestPath = path.join(deckDir, "manifest.json");
   if (!fs.existsSync(manifestPath)) {
@@ -131,7 +136,14 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
     return;
   }
 
-  const manifestReport = validateManifest(manifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION });
+  const isV2 = manifest.schema === DECK_SCHEMA_V2;
+  validatedSchemas.add(isV2 ? DECK_SCHEMA_V2 : DECK_SCHEMA);
+
+  // Schema dispatch is explicit: v1 decks take the v1 validator, v2 decks take
+  // the v2 validator. Neither path ever masquerades as the other.
+  const manifestReport = isV2
+    ? validateDeckManifestV2(manifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION })
+    : validateManifest(manifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION });
   if (!manifestReport.ok) errors.push(...manifestReport.errors);
 
   for (const entryName of ["content", "layout", "notes"]) {
@@ -142,6 +154,18 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
         slide: deckId,
         element: `manifest.entry.${entryName}`,
         message: `deck "${deckId}": entry.${entryName} not found: ${manifest.entry[entryName]}`,
+      }));
+    }
+  }
+
+  if (isV2 && manifest.entry?.slides) {
+    const slideEntryPath = path.join(deckDir, manifest.entry.slides);
+    if (!fs.existsSync(slideEntryPath)) {
+      errors.push(createValidationIssue({
+        type: "missing-entry",
+        slide: deckId,
+        element: "manifest.entry.slides",
+        message: `deck "${deckId}": entry.slides not found: ${manifest.entry.slides}`,
       }));
     }
   }
@@ -161,6 +185,46 @@ async function validateDeck({ deckId, decksDir, registry, themeTemplates, runtim
         element: `manifest.entry.${entryName}`,
         message: `deck "${deckId}": ${manifest.entry[entryName]}: ${error.message}`,
       }));
+    }
+  }
+
+  if (isV2 && manifest.entry?.slides) {
+    const slideEntryPath = path.join(deckDir, manifest.entry.slides);
+    if (fs.existsSync(slideEntryPath)) {
+      try {
+        const slideModule = await moduleLoader.load(slideEntryPath);
+        const slideDefinitions = slideModule?.slideDefinitions;
+        if (!Array.isArray(slideDefinitions)) {
+          errors.push(createValidationIssue({
+            type: "invalid-slide-entry",
+            slide: deckId,
+            element: "manifest.entry.slides",
+            message: `deck "${deckId}": ${manifest.entry.slides} must export a "slideDefinitions" array (lattice.deck.v2)`,
+          }));
+        } else {
+          const report = validateSlideDefinitions(slideDefinitions);
+          errors.push(...report.errors);
+          const routeClosure = validateDeckManifestV2(manifest, {
+            expectedId: deckId,
+            slideIds: report.slideIds,
+            runtimeVersion: RUNTIME_VERSION,
+          });
+          if (!routeClosure.ok) {
+            for (const error of routeClosure.errors) {
+              if (error.element?.startsWith("manifest.routes") || error.element?.startsWith("manifest.videoProfiles")) {
+                errors.push(error);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        errors.push(createValidationIssue({
+          type: "entry-import-failed",
+          slide: deckId,
+          element: "manifest.entry.slides",
+          message: `deck "${deckId}": ${manifest.entry.slides}: ${error.message}`,
+        }));
+      }
     }
   }
 
