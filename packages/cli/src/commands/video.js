@@ -19,11 +19,13 @@ export async function videoCommand({ args, rest }) {
   const [subcommand] = rest;
 
   if (!subcommand || subcommand === "--help" || subcommand === "help") {
-    console.log(`lattice video — Slide-first video planning and backend management
+    console.log(`lattice video — Slide-first video planning, backend management, and rendering
 
 Usage:
   lattice video plan --deck <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
   lattice video doctor --backend remotion|hyperframes
+  lattice video still --deck <id> --backend <id> --frame <n> [--route <name>] [--bundle-dir <dir>] [--output <path>]
+  lattice video render --deck <id> --backend <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
 
 "lattice video plan" compiles an engine-neutral integer-frame VideoPlan
 (schema "${VIDEO_PLAN_SCHEMA}") from the deck's videoPlan descriptor. The
@@ -54,6 +56,13 @@ omitted, the plan is written to stdout.
 backend packages and CLI binaries, browser executable, ffmpeg, and ffprobe.
 It reports tool presence, versions, paths, and install guidance. It does not
 install anything. Unavailable environments exit 2.
+
+"lattice video still" renders one integer frame of the plan through the
+selected backend into a PNG (--frame is required). "lattice video render"
+renders the complete plan into an MP4. Both commands prepare the backend's
+generated host under .lattice/generated/<backend>/ from the same VideoPlan
+and Slide Web Bundle; outputs must not be written into the canonical deck
+source or bundle. Missing backend dependencies exit 2 with install guidance.
 `);
     return;
   }
@@ -65,6 +74,16 @@ install anything. Unavailable environments exit 2.
 
   if (subcommand === "doctor") {
     await handleVideoDoctor({ args });
+    return;
+  }
+
+  if (subcommand === "still") {
+    await handleVideoStill({ args });
+    return;
+  }
+
+  if (subcommand === "render") {
+    await handleVideoRender({ args });
     return;
   }
 
@@ -298,9 +317,7 @@ async function resolveBundleIdentity({ args, descriptor, deckId, config, deckDir
   process.exit(2);
 }
 
-async function handleVideoPlan({ args }) {
-  const config = await loadConfig();
-
+async function compileDeckVideoPlan({ args, config }) {
   const deckId = args.deck;
   if (!deckId || typeof deckId !== "string") {
     console.error("[lattice] video plan requires --deck <id>");
@@ -445,7 +462,27 @@ async function handleVideoPlan({ args }) {
     process.exit(1);
   }
 
-  const planHash = hashVideoPlan(completePlan);
+  return {
+    completePlan,
+    planHash: hashVideoPlan(completePlan),
+    deckDir,
+    deckHash,
+    bundleIdentity,
+    descriptorOrigin,
+    routeId: chosenRouteId,
+  };
+}
+
+async function handleVideoPlan({ args }) {
+  const config = await loadConfig();
+  const {
+    completePlan,
+    planHash,
+    deckHash,
+    bundleIdentity,
+    descriptorOrigin,
+  } = await compileDeckVideoPlan({ args, config });
+
   const output = serializeVideoPlan(completePlan);
 
   if (args.output) {
@@ -456,7 +493,7 @@ async function handleVideoPlan({ args }) {
     console.log(`  plan-hash: ${planHash}`);
     console.log(`  deck-hash: ${deckHash}`);
     console.log(`  bundle-hash: ${bundleIdentity.bundleHash} (${bundleIdentity.source})`);
-    console.log(`  input-props-hash: ${inputPropsHash}`);
+    console.log(`  input-props-hash: ${completePlan.provenance.inputPropsHash}`);
     console.log(`  totalFrames: ${completePlan.totalFrames}`);
     console.log(`  fps: ${completePlan.fps}`);
     console.log(`  clips: ${completePlan.clips.length}`);
@@ -464,6 +501,149 @@ async function handleVideoPlan({ args }) {
   } else {
     process.stdout.write(output + "\n");
   }
+}
+
+async function resolveBackendForRender({ args }) {
+  const backendId = args.backend;
+  if (!backendId) {
+    console.error("[lattice] video still/render requires --backend remotion|hyperframes");
+    process.exit(2);
+  }
+
+  const { ensureBackendsInitialized, getBackend } = await import("../video/registry.js");
+  ensureBackendsInitialized();
+
+  try {
+    return getBackend(backendId);
+  } catch (error) {
+    console.error(`[lattice] ${error.message}`);
+    process.exit(2);
+  }
+}
+
+/**
+ * A backend render may only place artifacts outside the canonical deck
+ * source: outputs inside the deck source tree or the Slide Web Bundle are
+ * rejected instead of mutating canonical identity-bearing inputs.
+ */
+function assertSafeRenderOutput({ output, deckDir, bundleDir }) {
+  const resolved = path.resolve(output);
+  for (const [label, root] of [["deck source", deckDir], ["Slide Web Bundle", bundleDir]]) {
+    if (!root) continue;
+    const rel = path.relative(path.resolve(root), resolved);
+    if (rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)) {
+      console.error(`[lattice] video output must not be written into the canonical ${label} at ${root}: ${resolved}`);
+      process.exit(2);
+    }
+  }
+  return resolved;
+}
+
+async function prepareRenderForDeck({ args }) {
+  const config = await loadConfig();
+  const backend = await resolveBackendForRender({ args });
+  const { completePlan, planHash, deckDir, bundleIdentity } = await compileDeckVideoPlan({ args, config });
+
+  if (!bundleIdentity.bundlePath) {
+    console.error(
+      `[lattice] video still/render requires a real Slide Web Bundle directory. ` +
+      `Run "lattice export --deck ${args.deck}" first or pass --bundle-dir <path>; ` +
+      `a descriptor bundleHash alone cannot be rendered.`,
+    );
+    process.exit(2);
+  }
+
+  const projectRoot = process.cwd();
+  const workDir = path.resolve(projectRoot, ".lattice", "generated", backend.id);
+
+  let prepared;
+  try {
+    prepared = await backend.prepare({
+      plan: completePlan,
+      bundleDir: bundleIdentity.bundlePath,
+      workDir,
+      projectRoot,
+    });
+  } catch (error) {
+    console.error(`[lattice] backend prepare failed: ${error.message}`);
+    if (Array.isArray(error.diagnostics)) {
+      for (const diag of error.diagnostics) {
+        console.error(`  [${diag.level ?? "error"}] ${diag.message ?? String(diag)}`);
+      }
+    }
+    process.exit(2);
+  }
+
+  return { backend, prepared, planHash, totalFrames: completePlan.totalFrames, deckDir, bundleDir: bundleIdentity.bundlePath };
+}
+
+async function handleVideoStill({ args }) {
+  const frame = typeof args.frame === "string" && args.frame.trim() !== "" ? Number(args.frame) : args.frame;
+  if (!Number.isInteger(frame) || frame < 0) {
+    console.error("[lattice] video still requires --frame <non-negative integer>");
+    process.exit(2);
+  }
+
+  const { backend, prepared, totalFrames, deckDir, bundleDir } = await prepareRenderForDeck({ args });
+  if (frame >= totalFrames) {
+    console.error(`[lattice] frame ${frame} is outside the plan range [0, ${totalFrames - 1}] (totalFrames ${totalFrames})`);
+    process.exit(2);
+  }
+
+  const output = assertSafeRenderOutput({
+    output: args.output ?? path.join(prepared.workDir, `still-frame-${frame}.png`),
+    deckDir,
+    bundleDir,
+  });
+  await fs.mkdir(path.dirname(output), { recursive: true });
+
+  let artifact;
+  try {
+    artifact = await backend.renderStill({ prepared, frame, output });
+  } catch (error) {
+    console.error(`[lattice] video still failed: ${error.message}`);
+    if (Array.isArray(error.diagnostics)) {
+      for (const diag of error.diagnostics) {
+        console.error(`  [${diag.level ?? "error"}] ${diag.message ?? String(diag)}`);
+      }
+    }
+    process.exit(2);
+  }
+
+  console.log(`Still written to ${artifact.path}`);
+  console.log(`  frame: ${artifact.frame} / ${totalFrames - 1} (plan ${artifact.planHash.slice(0, 12)})`);
+  console.log(`  dimensions: ${artifact.metadata.width}x${artifact.metadata.height}`);
+  console.log(`  format: ${artifact.metadata.format} (codec ${artifact.metadata.codec})`);
+}
+
+async function handleVideoRender({ args }) {
+  const { backend, prepared, totalFrames, deckDir, bundleDir } = await prepareRenderForDeck({ args });
+
+  const output = assertSafeRenderOutput({
+    output: args.output ?? path.join(prepared.workDir, "video.mp4"),
+    deckDir,
+    bundleDir,
+  });
+  await fs.mkdir(path.dirname(output), { recursive: true });
+
+  let artifact;
+  try {
+    artifact = await backend.renderVideo({ prepared, output });
+  } catch (error) {
+    console.error(`[lattice] video render failed: ${error.message}`);
+    if (Array.isArray(error.diagnostics)) {
+      for (const diag of error.diagnostics) {
+        console.error(`  [${diag.level ?? "error"}] ${diag.message ?? String(diag)}`);
+      }
+    }
+    process.exit(2);
+  }
+
+  const { metadata } = artifact;
+  console.log(`Video written to ${artifact.path}`);
+  console.log(`  plan ${artifact.planHash.slice(0, 12)}: ${totalFrames} frames @ ${metadata.fps} fps`);
+  console.log(`  dimensions: ${metadata.width}x${metadata.height}`);
+  console.log(`  duration: ${metadata.durationSeconds}s, codec: ${metadata.codec}, format: ${metadata.format}`);
 }
 
 async function handleVideoDoctor({ args }) {

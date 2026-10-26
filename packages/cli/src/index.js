@@ -47,6 +47,8 @@ Usage:
   lattice preview [--port <port>] [--host <host>]
   lattice video plan --deck <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
   lattice video doctor --backend remotion|hyperframes
+  lattice video still --deck <id> --backend <id> --frame <n> [--output <path>]
+  lattice video render --deck <id> --backend <id> [--output <path>]
 
 Video commands (M3):
   "lattice video plan" compiles an engine-neutral integer-frame VideoPlan

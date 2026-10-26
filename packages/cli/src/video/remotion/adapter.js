@@ -4,15 +4,25 @@ import { validateVideoPlan, hashVideoPlan, serializeVideoPlan } from "@55aasecla
 import {
   BackendDiagnostic,
   PreparedRender,
+  RenderArtifact,
   VideoBackendError,
 } from "../backend-contract.js";
 import { resolveGeneratedWorkDir } from "../generated-path.js";
 import { validateSlideWebBundle } from "../bundle.js";
+import { generateRemotionHost } from "./host-template.js";
+import { probeArtifactWithFfprobe, resolveFfprobeExecutable } from "./probe.js";
+import {
+  assertHostClipsBound,
+  ensureHostBundle,
+  readHostManifest,
+  resolveRenderBrowserExecutable,
+  selectHostComposition,
+  writeRemotionFailureLog,
+} from "./render-support.js";
 import {
   checkCommand,
   getLocalPackageVersion,
   getLocalBinPath,
-  checkCommandVersion,
   checkBrowserExecutable,
   isValidPackageVersion,
   formatMissingToolDiagnostic,
@@ -167,6 +177,35 @@ export function createRemotionBackend({ probe = null } = {}) {
         }));
       }
 
+      // The M4 render path executes through the core `remotion` package and
+      // the official bundler; doctor reports their actually-installed
+      // versions so a render can always be tied to a concrete toolchain.
+      for (const packageName of ["remotion", "@remotion/bundler"]) {
+        const packageInfo = await probeHost.getLocalPackageVersion(packageName);
+        if (!packageInfo.ok || !isValidPackageVersion(packageInfo.version)) {
+          diagnostics.push(new BackendDiagnostic({
+            level: "error",
+            message: `${packageName} not found or its version is missing/invalid. Install with: npm install ${packageName}`,
+            details: {
+              package: packageName,
+              install: `npm install ${packageName}`,
+              error: packageInfo.ok ? `invalid version: ${JSON.stringify(packageInfo.version ?? null)}` : packageInfo.message,
+            },
+          }));
+        } else {
+          diagnostics.push(new BackendDiagnostic({
+            level: "info",
+            message: `${packageName} v${packageInfo.version} at ${packageInfo.pkgPath}`,
+            details: {
+              package: packageName,
+              resolved: packageInfo.resolved,
+              pkgPath: packageInfo.pkgPath,
+              version: packageInfo.version,
+            },
+          }));
+        }
+      }
+
       const ffmpegCheck = await probeHost.checkCommand("ffmpeg", ["-version"]);
       if (!ffmpegCheck.ok) {
         diagnostics.push(formatMissingToolDiagnostic(ffmpegCheck));
@@ -208,9 +247,9 @@ export function createRemotionBackend({ probe = null } = {}) {
 
       return formatInstallGuidance(diagnostics, {
         node: ">=18 (required)",
-        requiredPackages: ["@remotion/cli", "@remotion/renderer"],
+        requiredPackages: ["@remotion/cli", "@remotion/renderer", "remotion", "@remotion/bundler"],
         requiredTools: ["ffmpeg", "ffprobe", "chromium"],
-        installRemotion: "npm install @remotion/cli @remotion/renderer react react-dom",
+        installRemotion: "npm install @remotion/cli @remotion/renderer @remotion/bundler remotion react react-dom",
         installFfmpeg: "apt-get install ffmpeg  /  brew install ffmpeg  /  choco install ffmpeg",
         installBrowser: "npx playwright install chromium  /  apt-get install chromium  /  set LATTICE_CHROMIUM",
       });
@@ -270,8 +309,11 @@ export function createRemotionBackend({ probe = null } = {}) {
         `route: ${plan.routeId}`,
         `backend: ${REMOTION_BACKEND_ID}`,
         "---",
-        "Remotion adapter foundation (M3). Still and video rendering require",
-        "installed Remotion packages (@remotion/cli, @remotion/renderer).",
+        "Remotion adapter generated host (M4). host/ is a generated Remotion",
+        "project built from this VideoPlan and the Slide Web Bundle copied to",
+        "host/public/bundle. The composition renders the bundle's own slide",
+        "markup at the plan's integer frames and waits for per-frame paint",
+        "acknowledgment. Render with: lattice video still / lattice video render.",
         "Run: lattice video doctor --backend remotion",
         "",
       ];
@@ -289,6 +331,17 @@ export function createRemotionBackend({ probe = null } = {}) {
         "utf8",
       );
 
+      // Generated Remotion host: deterministic regeneration from (plan,
+      // bundle) — safe to re-run before every render.
+      const host = await generateRemotionHost({
+        workDir: safeWorkDir,
+        plan,
+        planHash,
+        bundlePath: bundleInfo.bundlePath,
+        bundleHash: bundleInfo.bundleHash,
+        manifest: bundleInfo.manifest,
+      });
+
       const remotionProject = {
         schema: "lattice.remotion-project.v1",
         planHash,
@@ -297,6 +350,14 @@ export function createRemotionBackend({ probe = null } = {}) {
         bundleDir: bundleInfo.bundlePath,
         bundleHash: bundleInfo.bundleHash,
         videoPlanPath: path.join(safeWorkDir, "video-plan.json"),
+        host: {
+          compositionId: host.hostManifest.compositionId,
+          hostDir: host.hostDir,
+          entryPoint: host.entryPoint,
+          publicDir: host.publicDir,
+          manifestPath: host.manifestPath,
+          configPath: host.configPath,
+        },
       };
 
       await fs.writeFile(
@@ -314,29 +375,224 @@ export function createRemotionBackend({ probe = null } = {}) {
       });
     },
 
-    async renderStill() {
-      throw new VideoBackendError(
-        "Remotion still rendering not available at M3. " +
-        "Install @remotion/cli @remotion/renderer react react-dom and check with: " +
-        "lattice video doctor --backend remotion",
-        { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "unsupported-render-method" },
-      );
+    async renderStill(input = {}) {
+      const { prepared = null, frame, output } = input;
+
+      if (!prepared || typeof prepared !== "object" || prepared.backendId !== REMOTION_BACKEND_ID ||
+          typeof prepared.planHash !== "string" || typeof prepared.workDir !== "string") {
+        throw new VideoBackendError(
+          "renderStill requires a PreparedRender produced by this backend's prepare()",
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-prepared" },
+        );
+      }
+      if (!Number.isInteger(frame) || frame < 0) {
+        await writeRemotionFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still-invalid-frame",
+          planHash: prepared.planHash,
+          context: { frame: String(frame) },
+          error: new Error(`renderStill requires a non-negative integer frame, got ${String(frame)}`),
+        });
+        throw new VideoBackendError(
+          `renderStill requires a non-negative integer frame, got ${String(frame)}`,
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-frame" },
+        );
+      }
+      if (typeof output !== "string" || output === "") {
+        await writeRemotionFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still-invalid-output",
+          planHash: prepared.planHash,
+          context: { frame: String(frame) },
+          error: new Error("renderStill requires a non-empty output path"),
+        });
+        throw new VideoBackendError(
+          "renderStill requires a non-empty output path",
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-output" },
+        );
+      }
+
+      const { manifest } = await readHostManifest({ workDir: prepared.workDir, planHash: prepared.planHash });
+      if (!Number.isInteger(manifest.totalFrames) || frame >= manifest.totalFrames) {
+        await writeRemotionFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still-invalid-frame",
+          planHash: prepared.planHash,
+          context: { frame: String(frame), totalFrames: String(manifest.totalFrames) },
+          error: new Error(`frame ${frame} is outside the plan range [0, ${manifest.totalFrames - 1}]`),
+        });
+        throw new VideoBackendError(
+          `frame ${frame} is outside the plan range [0, ${manifest.totalFrames - 1}] (totalFrames ${manifest.totalFrames})`,
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-frame" },
+        );
+      }
+      assertHostClipsBound(manifest);
+
+      const resolvedOutput = path.resolve(output);
+      await fs.mkdir(path.dirname(resolvedOutput), { recursive: true });
+
+      try {
+        const serveUrl = await ensureHostBundle({ workDir: prepared.workDir, planHash: prepared.planHash });
+        const browserExecutable = await resolveRenderBrowserExecutable();
+        const composition = await selectHostComposition({ serveUrl, compositionId: manifest.compositionId, browserExecutable });
+        const { renderStill: remotionRenderStill } = await import("@remotion/renderer");
+        await remotionRenderStill({
+          composition,
+          serveUrl,
+          frame,
+          output: resolvedOutput,
+          imageFormat: "png",
+          overwrite: true,
+          inputProps: {},
+          browserExecutable,
+        });
+      } catch (error) {
+        const failureLog = await writeRemotionFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still",
+          planHash: prepared.planHash,
+          context: { frame: String(frame), output: resolvedOutput },
+          error,
+          diagnostics: error instanceof VideoBackendError ? error.diagnostics : [],
+        });
+        throw new VideoBackendError(
+          `Remotion still rendering failed for frame ${frame}: ${error?.message ?? String(error)}` +
+            (failureLog ? ` (failure log: ${failureLog})` : ""),
+          {
+            backendId: REMOTION_BACKEND_ID,
+            diagnostics: error instanceof VideoBackendError
+              ? error.diagnostics
+              : [new BackendDiagnostic({ level: "error", message: String(error?.stack ?? error) })],
+            cause: error instanceof VideoBackendError && error.cause === "invalid-frame" ? "invalid-frame" : "render-failed",
+          },
+        );
+      }
+
+      const { ffprobePath } = await resolveFfprobeExecutable();
+      const metadata = await probeArtifactWithFfprobe({ ffprobePath, artifactPath: resolvedOutput });
+      if (metadata.width !== manifest.width || metadata.height !== manifest.height) {
+        throw new VideoBackendError(
+          `rendered still has unexpected dimensions ${metadata.width}x${metadata.height}, expected ${manifest.width}x${manifest.height}: ${resolvedOutput}`,
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "artifact-mismatch" },
+        );
+      }
+
+      return new RenderArtifact({
+        path: resolvedOutput,
+        backendId: REMOTION_BACKEND_ID,
+        planHash: prepared.planHash,
+        frame,
+        metadata,
+      });
     },
 
-    async renderVideo() {
-      throw new VideoBackendError(
-        "Remotion video rendering not available at M3. " +
-        "Install @remotion/cli @remotion/renderer react react-dom and check with: " +
-        "lattice video doctor --backend remotion",
-        { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "unsupported-render-method" },
-      );
+    async renderVideo(input = {}) {
+      const { prepared = null, output } = input;
+
+      if (!prepared || typeof prepared !== "object" || prepared.backendId !== REMOTION_BACKEND_ID ||
+          typeof prepared.planHash !== "string" || typeof prepared.workDir !== "string") {
+        throw new VideoBackendError(
+          "renderVideo requires a PreparedRender produced by this backend's prepare()",
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-prepared" },
+        );
+      }
+      if (typeof output !== "string" || output === "") {
+        throw new VideoBackendError(
+          "renderVideo requires a non-empty output path",
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-output" },
+        );
+      }
+
+      const { manifest } = await readHostManifest({ workDir: prepared.workDir, planHash: prepared.planHash });
+      assertHostClipsBound(manifest);
+
+      const resolvedOutput = path.resolve(output);
+      await fs.mkdir(path.dirname(resolvedOutput), { recursive: true });
+
+      try {
+        const serveUrl = await ensureHostBundle({ workDir: prepared.workDir, planHash: prepared.planHash });
+        const browserExecutable = await resolveRenderBrowserExecutable();
+        const composition = await selectHostComposition({ serveUrl, compositionId: manifest.compositionId, browserExecutable });
+        const { renderMedia } = await import("@remotion/renderer");
+        const renderResult = await renderMedia({
+          composition,
+          serveUrl,
+          codec: "h264",
+          outputLocation: resolvedOutput,
+          overwrite: true,
+          inputProps: {},
+          browserExecutable,
+        });
+        if (renderResult?.outputLocation && path.resolve(renderResult.outputLocation) !== resolvedOutput) {
+          // renderMedia reports where the artifact actually landed; anything
+          // other than the requested path would break the isolation contract.
+          throw new Error(
+            `renderMedia wrote to ${renderResult.outputLocation} instead of the requested ${resolvedOutput}`,
+          );
+        }
+      } catch (error) {
+        const failureLog = await writeRemotionFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-video",
+          planHash: prepared.planHash,
+          context: { output: resolvedOutput },
+          error,
+          diagnostics: error instanceof VideoBackendError ? error.diagnostics : [],
+        });
+        throw new VideoBackendError(
+          `Remotion video rendering failed: ${error?.message ?? String(error)}` +
+            (failureLog ? ` (failure log: ${failureLog})` : ""),
+          {
+            backendId: REMOTION_BACKEND_ID,
+            diagnostics: error instanceof VideoBackendError
+              ? error.diagnostics
+              : [new BackendDiagnostic({ level: "error", message: String(error?.stack ?? error) })],
+            cause: "render-failed",
+          },
+        );
+      }
+
+      const { ffprobePath } = await resolveFfprobeExecutable();
+      const metadata = await probeArtifactWithFfprobe({ ffprobePath, artifactPath: resolvedOutput });
+      const mismatches = [];
+      if (metadata.width !== manifest.width) mismatches.push(`width ${metadata.width} != ${manifest.width}`);
+      if (metadata.height !== manifest.height) mismatches.push(`height ${metadata.height} != ${manifest.height}`);
+      if (metadata.fps !== manifest.fps) mismatches.push(`fps ${metadata.fps} != ${manifest.fps}`);
+      if (metadata.totalFrames !== manifest.totalFrames) mismatches.push(`totalFrames ${metadata.totalFrames} != ${manifest.totalFrames}`);
+      if (mismatches.length > 0) {
+        const failureLog = await writeRemotionFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-video-probe",
+          planHash: prepared.planHash,
+          context: { output: resolvedOutput, mismatches: mismatches.join("; ") },
+          error: new Error(`rendered MP4 failed ffprobe verification: ${mismatches.join("; ")}`),
+          diagnostics: [],
+        });
+        throw new VideoBackendError(
+          `rendered MP4 failed ffprobe verification: ${mismatches.join("; ")}` +
+            (failureLog ? ` (failure log: ${failureLog})` : ""),
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "artifact-mismatch" },
+        );
+      }
+
+      return new RenderArtifact({
+        path: resolvedOutput,
+        backendId: REMOTION_BACKEND_ID,
+        planHash: prepared.planHash,
+        frame: null,
+        metadata,
+      });
     },
 
-    async inspectArtifact() {
-      throw new VideoBackendError(
-        "Artifact inspection requires ffprobe. Check with: lattice video doctor --backend remotion",
-        { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "unsupported-render-method" },
-      );
+    async inspectArtifact(artifactPath) {
+      if (typeof artifactPath !== "string" || artifactPath === "") {
+        throw new VideoBackendError(
+          "inspectArtifact requires a non-empty artifact path",
+          { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "invalid-artifact-path" },
+        );
+      }
+      const { ffprobePath } = await resolveFfprobeExecutable();
+      return probeArtifactWithFfprobe({ ffprobePath, artifactPath: path.resolve(artifactPath) });
     },
   };
 }
