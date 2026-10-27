@@ -2,6 +2,12 @@ import { createHash } from "node:crypto";
 
 export const VIDEO_PLAN_SCHEMA = "lattice.video-plan.v1";
 
+// M7: plans compiled from a deck that declares a lattice.timeline.v1 carry
+// the stop schedule (and optional animation declaration) per clip under a
+// versioned schema. Plans without timeline data keep the v1 schema and byte
+// layout exactly.
+export const VIDEO_PLAN_SCHEMA_V2 = "lattice.video-plan.v2";
+
 const JSON_UNSAFE_TYPES = new Set(["undefined", "function", "symbol", "bigint"]);
 
 function isJsonSafe(value, path = "$", ancestors = new Set(), skip = null) {
@@ -240,6 +246,77 @@ function validateNonNegativeInteger(value, label) {
   return null;
 }
 
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Structural validation of a clip's stop schedule (M7 lattice.video-plan.v2).
+ * Preset-name validation happens at deck compile time against the theme
+ * catalog; the engine-neutral plan contract only enforces shape and frames.
+ */
+function validateClipStops(stops, durationFrames, label) {
+  if (!Array.isArray(stops) || stops.length === 0) {
+    return `${label}.stops must be a non-empty array of { id, frame }`;
+  }
+  let previousFrame = -1;
+  const seenIds = new Set();
+  for (let index = 0; index < stops.length; index += 1) {
+    const stop = stops[index];
+    if (!stop || typeof stop !== "object" || Array.isArray(stop)) {
+      return `${label}.stops[${index}] must be an object { id, frame }`;
+    }
+    if (typeof stop.id !== "string" || stop.id === "" || !SLUG_PATTERN.test(stop.id)) {
+      return `${label}.stops[${index}].id must be a stable slug, got ${JSON.stringify(stop.id ?? null)}`;
+    }
+    if (seenIds.has(stop.id)) {
+      return `${label}.stops[${index}].id duplicates an earlier stop id: ${stop.id}`;
+    }
+    seenIds.add(stop.id);
+    const frameError = validateNonNegativeInteger(stop.frame, `${label}.stops[${index}].frame`);
+    if (frameError) return frameError;
+    if (stop.frame <= previousFrame) {
+      return `${label}.stops[${index}].frame must be strictly increasing (previous stop frame ${previousFrame})`;
+    }
+    previousFrame = stop.frame;
+    if (stop.frame > durationFrames - 1) {
+      return `${label}.stops[${index}].frame ${stop.frame} is outside [0, ${durationFrames - 1}]`;
+    }
+  }
+  return null;
+}
+
+function validateClipAnimation(animation, label) {
+  if (!animation || typeof animation !== "object" || Array.isArray(animation)) {
+    return `${label}.animation must be an object`;
+  }
+  if (typeof animation.preset !== "string" || animation.preset === "") {
+    return `${label}.animation.preset must be a non-empty string (a named preset from the theme catalog)`;
+  }
+  for (const [key, value] of Object.entries(animation)) {
+    if (key === "preset") continue;
+    if (key === "direction") {
+      if (typeof value !== "string" || value === "") {
+        return `${label}.animation.direction must be a non-empty string, got ${JSON.stringify(value ?? null)}`;
+      }
+      continue;
+    }
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+      return `${label}.animation.${key} must be a non-negative integer, got ${JSON.stringify(value ?? null)}`;
+    }
+  }
+  return null;
+}
+
+function normalizeClipTimelineFields({ stops, animation }) {
+  const entry = {};
+  if (stops !== undefined) {
+    entry.stops = stops.map((stop) => ({ id: stop.id, frame: stop.frame }));
+  }
+  if (animation !== undefined) {
+    entry.animation = { ...animation };
+  }
+  return entry;
+}
+
 export function compileVideoPlan({
   deckId,
   routeId = "main",
@@ -335,6 +412,14 @@ export function compileVideoPlan({
     if (errD) {
       return { ok: false, reason: errD };
     }
+    if (slide.stops !== undefined) {
+      const stopsError = validateClipStops(slide.stops, dur, `slide ${slideId}`);
+      if (stopsError) return { ok: false, reason: stopsError };
+    }
+    if (slide.animation !== undefined) {
+      const animationError = validateClipAnimation(slide.animation, `slide ${slideId}`);
+      if (animationError) return { ok: false, reason: animationError };
+    }
     const slideInputProps = slide.inputProps;
     if (slideInputProps !== undefined && (slideInputProps === null || typeof slideInputProps !== "object" || Array.isArray(slideInputProps))) {
       return {
@@ -351,6 +436,7 @@ export function compileVideoPlan({
 
   const clips = [];
   let currentFrame = 0;
+  let hasTimelineData = false;
 
   for (const slideId of route) {
     const slide = slidesById[slideId];
@@ -362,13 +448,19 @@ export function compileVideoPlan({
       return { ok: false, reason: `clip ${slideId} inputProps: ${clipInputPropsSafety.reason}` };
     }
 
-    clips.push({
+    const clip = {
       slideId,
       startFrame: currentFrame,
       durationFrames,
       source: `slide:${slideId}`,
       inputProps: clipInputProps,
-    });
+    };
+    const timelineFields = normalizeClipTimelineFields(slide);
+    if (timelineFields.stops !== undefined) clip.stops = timelineFields.stops;
+    if (timelineFields.animation !== undefined) clip.animation = timelineFields.animation;
+    if (clip.stops !== undefined || clip.animation !== undefined) hasTimelineData = true;
+
+    clips.push(clip);
 
     currentFrame += durationFrames;
   }
@@ -428,7 +520,7 @@ export function compileVideoPlan({
   // bakeVideoPlanProvenance. validateVideoPlan rejects empty provenance, so
   // an unbaked plan can never be mistaken for a complete plan.
   const plan = {
-    schema: VIDEO_PLAN_SCHEMA,
+    schema: hasTimelineData ? VIDEO_PLAN_SCHEMA_V2 : VIDEO_PLAN_SCHEMA,
     deckId,
     routeId,
     width,
@@ -517,7 +609,7 @@ export function validateVideoPlan(plan) {
   if (!planSafety.ok) {
     errors.push(`plan is not JSON-safe: ${planSafety.reason}`);
   }
-  if (plan.schema !== VIDEO_PLAN_SCHEMA) {
+  if (plan.schema !== VIDEO_PLAN_SCHEMA && plan.schema !== VIDEO_PLAN_SCHEMA_V2) {
     errors.push(`invalid schema: ${plan.schema}`);
   }
   if (typeof plan.deckId !== "string" || plan.deckId === "") {
@@ -562,6 +654,19 @@ export function validateVideoPlan(plan) {
       }
       if (typeof clip.source !== "string" || clip.source === "") {
         errors.push(`clips[${i}] has invalid source`);
+      }
+      if (clip.stops !== undefined || clip.animation !== undefined) {
+        if (plan.schema !== VIDEO_PLAN_SCHEMA_V2) {
+          errors.push(`clips[${i}] carries timeline data but plan.schema is ${plan.schema} (expected ${VIDEO_PLAN_SCHEMA_V2})`);
+        }
+      }
+      if (clip.stops !== undefined) {
+        const stopsError = validateClipStops(clip.stops, Number.isInteger(clip.durationFrames) ? clip.durationFrames : 1, `clips[${i}]`);
+        if (stopsError) errors.push(stopsError);
+      }
+      if (clip.animation !== undefined) {
+        const animationError = validateClipAnimation(clip.animation, `clips[${i}]`);
+        if (animationError) errors.push(animationError);
       }
       if (clip.inputProps === null || typeof clip.inputProps !== "object" || Array.isArray(clip.inputProps)) {
         errors.push(

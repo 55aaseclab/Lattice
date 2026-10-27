@@ -45,7 +45,7 @@ import {
   scanSource,
   serializeJsValue,
 } from "../edit/source-map.js";
-import { verifyContentLock } from "@55aaseclab/lattice-runtime";
+import { validateDeckManifestV2, verifyContentLock } from "@55aaseclab/lattice-runtime";
 
 const EDIT_USAGE = `Usage: lattice edit --deck <id> --slide <slideId> --field <path> --value <json>
                       [--dry-run] [--reason <text>] [--actor <id>] [--timestamp <iso>]
@@ -71,6 +71,14 @@ Any verification failure rolls the source file back byte-exact.
 --dry-run resolves and gates the edit without writing anything: exit 0 when
 the edit would apply, exit 1 when it would be refused.
 
+M7 timeline mode: "lattice edit --deck <id> --timeline <path> --value <json>"
+runs the same minimal, auditable loop against the deck-level timeline
+declaration in the deck's manifest.json (lattice.timeline.v1): animation
+presets and parameters, stop frames, rhythm, audio tracks — same gate,
+provenance, source map, and validate loop as content edits, with value
+validation against the theme preset catalog before anything is written.
+--timeline and --slide/--field are mutually exclusive.
+
 Output: one JSON object (stdout on success, stderr on refusal). Exit codes:
 0 applied / dry-run allowed; 1 refused (gate, no-op, not locatable,
 validation failure); 2 configuration or infrastructure failure.
@@ -95,6 +103,15 @@ function exitCodeForErrorCode(code) {
 export async function editCommand({ args, cwd = process.cwd() }) {
   if (args.help) {
     console.log(EDIT_USAGE);
+    return;
+  }
+
+  // M7: --timeline performs the same auditable loop against the deck-level
+  // lattice.timeline.v1 declaration in manifest.json (animation presets,
+  // stop frames, rhythm, audio tracks). Mutually exclusive with the content
+  // edit mode; every existing content-edit behavior is untouched.
+  if (args.timeline !== undefined) {
+    await timelineEditCommand({ args, cwd });
     return;
   }
 
@@ -530,4 +547,401 @@ function runValidateSubprocess(cwd, deckId) {
     timeout: 300000,
   });
   return { exitCode: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+// ---- M7 timeline mode -------------------------------------------------------
+//
+// The same auditable edit loop as content edits, applied to the deck-level
+// lattice.timeline.v1 declaration in manifest.json. Existing content-edit
+// behavior is untouched.
+
+function findRootObjectRecord(records) {
+  const objects = records.filter((record) => record.kind === "object");
+  if (objects.length === 0) {
+    throw Object.assign(new Error("manifest.json contains no object literal to locate fields in"), { code: "field-location-failed" });
+  }
+  return objects.reduce((best, record) => (record.start < best.start ? record : best));
+}
+
+/**
+ * Validate every animation declaration inside a mutated timeline against the
+ * theme preset catalog (M7 1b: illegal presets/parameters are refused before
+ * any write), then re-validate the whole deck timeline against its slides.
+ */
+async function validateTimelineValue({ cwd, config, deckId, mutatedManifest }) {
+  const errors = [];
+  const { validateTimelineDeclaration } = await import("@55aaseclab/lattice-runtime/timeline");
+  const { validateStopRevealAnimation } = await import("@55aaseclab/lattice-runtime/themes/simple-light/presets");
+  const timeline = mutatedManifest?.timeline;
+  if (timeline !== undefined) {
+    errors.push(...validateTimelineDeclaration(timeline).errors.map((error) => error.message));
+    const animations = [];
+    if (timeline.defaults?.animation !== undefined) animations.push(["timeline.defaults.animation", timeline.defaults.animation]);
+    for (const [slideId, entry] of Object.entries(timeline.slides ?? {})) {
+      if (entry?.animation !== undefined) animations.push([`timeline.slides.${slideId}.animation`, entry.animation]);
+    }
+    for (const [label, animation] of animations) {
+      const report = validateStopRevealAnimation(animation, { label });
+      errors.push(...report.errors);
+    }
+  }
+  const manifestReport = validateDeckManifestV2(mutatedManifest, { expectedId: deckId });
+  errors.push(...manifestReport.errors.map((error) => `[${error.type}] ${error.element ?? ""}: ${error.message}`));
+  if (errors.length > 0 || timeline === undefined) {
+    return { ok: errors.length === 0, errors };
+  }
+  // Full cross-check (stop ids, frames, reveal markers) against the deck's
+  // real slide definitions through the project module pipeline.
+  const { resolveTimeline } = await import("@55aaseclab/lattice-runtime/timeline");
+  const deckDir = deckDirPath(cwd, config, deckId);
+  const entrySlides = mutatedManifest.entry?.slides;
+  if (typeof entrySlides === "string" && entrySlides !== "") {
+    const { createProjectModuleLoader } = await import("../deck-v2/project-module-loader.js");
+    const loader = await createProjectModuleLoader(cwd);
+    try {
+      const module = await loader.load(path.resolve(deckDir, entrySlides));
+      const slideDefinitions = module?.slideDefinitions;
+      if (Array.isArray(slideDefinitions)) {
+        const resolution = resolveTimeline({
+          manifest: mutatedManifest,
+          slides: slideDefinitions,
+          validateAnimation: (animation, options) => {
+            const report = validateStopRevealAnimation(animation, options);
+            return { ...report, errors: report.errors.map((message) => ({ type: "invalid-animation", message })) };
+          },
+        });
+        if (!resolution.ok) errors.push(...resolution.errors.map((error) => error.message));
+      }
+    } catch (error) {
+      errors.push(`cannot cross-check the timeline against slide definitions: ${error.message}`);
+    } finally {
+      await loader.close();
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+async function timelineEditCommand({ args, cwd }) {
+  const timelinePath = args.timeline;
+  if (args.slide !== undefined || args.field !== undefined) {
+    fail({
+      error: {
+        code: "mutually-exclusive-arguments",
+        message: "--timeline targets the deck-level timeline in manifest.json; --slide/--field target content.js. Use one mode, not both.",
+      },
+    }, 1);
+  }
+  if (typeof timelinePath !== "string" || timelinePath.trim() === "") {
+    fail({ error: { code: "missing-argument", message: "--timeline requires a dot-separated path into the deck's timeline declaration" } }, 2);
+  }
+
+  let config;
+  try {
+    config = await loadConfig(cwd);
+  } catch (error) {
+    fail({ error: { code: "config-not-found", message: error.message } }, 2);
+  }
+
+  let value;
+  try {
+    value = JSON.parse(args.value);
+  } catch (error) {
+    fail({
+      error: {
+        code: "invalid-value",
+        message: `--value must be a single JSON value: ${error.message}`,
+        hint: 'strings need quotes, e.g. --value \'"rise"\'',
+      },
+    }, 1);
+  }
+
+  const deckId = args.deck;
+  const dryRun = Boolean(args["dry-run"]);
+  const reason = typeof args.reason === "string" ? args.reason : null;
+  const actor = typeof args.actor === "string" && args.actor.trim() !== "" ? args.actor.trim() : "unknown";
+  const when = resolveTimestamp(args.timestamp);
+  const locksDir = resolveLocksDir(cwd, { locksDir: args["locks-dir"] });
+  const migrationDir = path.resolve(cwd, args["migration-dir"] ?? DEFAULT_MIGRATION_DIR);
+
+  const deckDir = deckDirPath(cwd, config, deckId);
+  if (!fs.existsSync(deckDir)) {
+    fail({ error: { code: "deck-not-found", message: `deck directory not found: ${deckDir}` } }, 1);
+  }
+  let manifest;
+  try {
+    manifest = requireV2Manifest(readManifest(deckDir), deckId);
+  } catch (error) {
+    fail({ error: { code: error.code ?? "invalid-manifest", message: error.message } }, exitCodeForErrorCode(error.code));
+  }
+  const manifestFile = path.join(deckDir, "manifest.json");
+  const relativeManifestFile = path.relative(cwd, manifestFile).split(path.sep).join("/");
+
+  if (manifest.timeline === undefined) {
+    fail({
+      error: {
+        code: "timeline-not-declared",
+        message: `deck "${deckId}" does not declare a lattice.timeline.v1 in manifest.json; timeline values can only be edited once the deck declares one`,
+      },
+    }, 1);
+  }
+
+  const sourceBefore = fs.readFileSync(manifestFile, "utf8");
+  const sha256Before = sha256Hex(Buffer.from(sourceBefore, "utf8"));
+
+  // 1. Locate the exact value span in manifest.json.
+  let target;
+  try {
+    const records = scanSource(sourceBefore);
+    target = locateFieldPath(sourceBefore, records, findRootObjectRecord(records), `timeline.${timelinePath}`);
+  } catch (error) {
+    fail({
+      error: {
+        code: error.code ?? "field-location-failed",
+        message: error.message,
+        file: relativeManifestFile,
+        field: `timeline.${timelinePath}`,
+      },
+    }, exitCodeForErrorCode(error.code));
+  }
+  const targetText = sourceBefore.slice(target.valueStart, target.valueEnd);
+
+  // 2. No-op refusal, exactly like content edits.
+  let currentValue;
+  try {
+    currentValue = JSON.parse(targetText);
+  } catch {
+    currentValue = undefined;
+  }
+  if (currentValue !== undefined && jsonValuesEqual(currentValue, value)) {
+    fail({
+      error: {
+        code: "no-op-edit",
+        message: `timeline path "${timelinePath}" already carries this value; refusing a no-op edit`,
+        file: relativeManifestFile,
+        field: `timeline.${timelinePath}`,
+      },
+    }, 1);
+  }
+
+  // 3. Patch + in-memory mutated manifest, validated against the preset
+  //    catalog BEFORE the gate or any write.
+  const replacement = serializeJsValue(value, lineIndentation(sourceBefore, target.keyStart));
+  const patch = buildPatch(sourceBefore, target, replacement);
+  const sha256After = sha256Hex(Buffer.from(patch.patched, "utf8"));
+  let mutatedManifest;
+  try {
+    mutatedManifest = JSON.parse(patch.patched);
+  } catch (error) {
+    fail({ error: { code: "patched-manifest-invalid", message: `patched manifest.json is not valid JSON: ${error.message}` } }, 1);
+  }
+  const valueValidation = await validateTimelineValue({ cwd, config, deckId, mutatedManifest });
+  if (!valueValidation.ok) {
+    fail({
+      error: {
+        code: "invalid-timeline-value",
+        message: "timeline value rejected before write (preset catalog / timeline contract)",
+        details: { errors: valueValidation.errors },
+        file: relativeManifestFile,
+        field: `timeline.${timelinePath}`,
+      },
+    }, 1);
+  }
+
+  const identityManifest = resolveIdentityManifest({ cwd, deckId, liveManifest: manifest, migrationDir });
+  const lockRecord = readLockRecord(locksDir, deckId);
+
+  // 4. Content Lock gate — computed BEFORE any write, same fail-closed
+  //    semantics as content edits.
+  const gate = await runTimelineGate({ cwd, config, deckId, timelinePath, identityManifest, lockRecord, value, dryRun });
+
+  const sourceMap = {
+    file: relativeManifestFile,
+    slideObject: null,
+    target: {
+      kind: "property-value",
+      fieldPath: `timeline.${timelinePath}`,
+      charRange: patch.span.charRange,
+      byteRange: patch.span.byteRange,
+      line: patch.span.line,
+      column: patch.span.column,
+    },
+    replacedBytes: patch.replacedBytes,
+    insertedBytes: patch.insertedBytes,
+  };
+
+  if (dryRun) {
+    emit({
+      dryRun: true,
+      deck: deckId,
+      timelinePath,
+      reason,
+      actor,
+      when,
+      sourceMap,
+      inputs: { file: relativeManifestFile, sha256: sha256Before },
+      outputs: { file: relativeManifestFile, sha256: sha256After },
+      gate,
+      wouldWrite: [relativeManifestFile],
+    });
+    return;
+  }
+
+  // 5. Apply the single-span replacement.
+  fs.writeFileSync(manifestFile, patch.patched, "utf8");
+  const written = fs.readFileSync(manifestFile, "utf8");
+  if (sha256Hex(Buffer.from(written, "utf8")) !== sha256After) {
+    fail({ error: { code: "write-mismatch", message: "post-write verification of file bytes failed" } }, 1);
+  }
+
+  // 6. Verification loop; any failure rolls the edit back byte-exact.
+  let postVerify;
+  try {
+    postVerify = await runTimelinePostWriteVerification({ cwd, config, deckId, timelinePath, value, lockRecord });
+  } catch (error) {
+    rollback(manifestFile, sourceBefore, sha256Before);
+    fail({
+      error: { code: "post-verify-failed", message: error.message },
+      rolledBack: true,
+      inputs: { file: relativeManifestFile, sha256: sha256Before },
+    }, 1);
+  }
+  if (!postVerify.ok) {
+    rollback(manifestFile, sourceBefore, sha256Before);
+    fail({
+      error: { code: postVerify.code, message: postVerify.message },
+      rolledBack: true,
+      details: postVerify.details ?? null,
+      inputs: { file: relativeManifestFile, sha256: sha256Before },
+    }, 1);
+  }
+
+  // 7. Provenance record.
+  const provenanceRecord = buildProvenanceRecord({
+    command: "edit",
+    actor,
+    when,
+    deck: deckId,
+    slide: null,
+    field: `timeline.${timelinePath}`,
+    reason,
+    value,
+    sourceMap,
+    inputs: {
+      file: relativeManifestFile,
+      sha256: sha256Before,
+      compositeHash: gate.fingerprintBefore?.compositeHash ?? null,
+    },
+    outputs: {
+      file: relativeManifestFile,
+      sha256: sha256After,
+      compositeHash: postVerify.fingerprint?.compositeHash ?? null,
+    },
+    gate: {
+      contentLock: gate.summary,
+      validate: postVerify.validate,
+      fingerprintAfter: postVerify.fingerprint,
+    },
+  });
+  let provenancePath;
+  try {
+    provenancePath = writeProvenanceRecord(cwd, provenanceRecord);
+  } catch (error) {
+    fail({ error: { code: "provenance-write-failed", message: error.message } }, 2);
+  }
+
+  emit({
+    dryRun: false,
+    deck: deckId,
+    timelinePath,
+    reason,
+    actor,
+    when,
+    sourceMap,
+    inputs: { file: relativeManifestFile, sha256: sha256Before },
+    outputs: { file: relativeManifestFile, sha256: sha256After },
+    gate: { contentLock: gate.summary, validate: postVerify.validate },
+    fingerprint: postVerify.fingerprint,
+    provenance: { schema: provenanceRecord.schema, path: path.relative(cwd, provenancePath).split(path.sep).join("/") },
+  });
+}
+
+async function runTimelineGate({ cwd, config, deckId, timelinePath, identityManifest, lockRecord, value, dryRun }) {
+  if (!lockRecord || !lockRecord.fingerprint) {
+    return {
+      summary: { mode: "absent", decision: "allow", note: "no stored content lock for this deck" },
+      fingerprintBefore: null,
+    };
+  }
+
+  const reject = (code, message, extra = {}) => {
+    fail({
+      error: { code, message, deck: deckId, timelinePath, ...extra },
+      gate: { contentLock: { mode: "enforced", decision: "reject", lockPath: lockRecord.lockPath } },
+      dryRun,
+      zeroWrites: true,
+    }, 1);
+  };
+
+  const { view } = await withDeckView(cwd, config, deckId, () => {});
+  const fingerprintBefore = deckFingerprint(view, identityManifest);
+  const beforeVerify = verifyContentLock(fingerprintBefore, lockRecord.fingerprint);
+  if (!beforeVerify.ok) {
+    reject("deck-drifted-from-lock", `deck "${deckId}" no longer verifies against its stored content lock (${beforeVerify.reason}); refusing to edit on top of drift`, {
+      diffs: beforeVerify.diffs ?? null,
+    });
+  }
+
+  // The timeline lives in the manifest, which the content-identity manifest
+  // hashes (live-manifest identity): a timeline edit must change the
+  // fingerprint, or the lock is not actually protecting it (fail closed).
+  const mutatedIdentity = structuredClone(identityManifest);
+  if (!applyValueAtPath(mutatedIdentity, `timeline.${timelinePath}`, value)) {
+    reject("timeline-path-not-in-identity-manifest", `timeline path "timeline.${timelinePath}" could not be applied to the content-identity manifest`);
+  }
+  const fingerprintAfter = deckFingerprint(view, mutatedIdentity);
+  const afterVerify = verifyContentLock(fingerprintAfter, lockRecord.fingerprint);
+  if (afterVerify.ok) {
+    reject("gate-inconclusive", "content lock verification did not detect the timeline change; refusing to proceed", {});
+  }
+  reject("content-lock-gate-rejected", `deck "${deckId}" is content-locked; this timeline edit would change the frozen fingerprint (re-freeze with "lattice lock update --deck ${deckId}" after explicit authorization)`, {
+    diffs: afterVerify.diffs ?? null,
+    lockPath: lockRecord.lockPath,
+  });
+}
+
+async function runTimelinePostWriteVerification({ cwd, config, deckId, timelinePath, value, lockRecord }) {
+  // Fresh deck view from the files just written (new module pipeline, no
+  // stale module cache) — withDeckView re-reads manifest.json, so the
+  // identity manifest carries the applied timeline edit.
+  const { view, manifest } = await withDeckView(cwd, config, deckId, () => {});
+
+  let current = manifest.timeline;
+  for (const segment of String(timelinePath).split(".").map((part) => part.trim()).filter(Boolean)) {
+    current = descend(current, segment);
+    if (current === undefined) {
+      return { ok: false, code: "post-write-manifest-mismatch", message: `re-read manifest does not carry the edited value at "timeline.${timelinePath}"` };
+    }
+  }
+  if (!jsonValuesEqual(current, value)) {
+    return { ok: false, code: "post-write-manifest-mismatch", message: `re-read manifest value at "timeline.${timelinePath}" does not match the edit` };
+  }
+
+  const fingerprint = deckFingerprint(view, manifest);
+  if (lockRecord?.fingerprint) {
+    const verify = verifyContentLock(fingerprint, lockRecord.fingerprint);
+    if (!verify.ok) {
+      return { ok: false, code: "content-lock-verify-failed", message: "content lock verification failed after write", details: verify };
+    }
+  }
+
+  const validate = await runValidateSubprocess(cwd, deckId);
+  if (validate.exitCode !== 0) {
+    return {
+      ok: false,
+      code: "validate-failed",
+      message: `lattice validate --deck ${deckId} exited ${validate.exitCode}`,
+      details: { stdout: validate.stdout.slice(-4000), stderr: validate.stderr.slice(-4000) },
+    };
+  }
+  return { ok: true, fingerprint, validate: { exitCode: 0, pass: true } };
 }

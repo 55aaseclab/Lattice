@@ -23,9 +23,12 @@
     "./migration/v1-to-v2": "./src/migration/v1-to-v2.js",
     "./themes/simple-light": "./themes/simple-light/index.js",
     "./themes/simple-light/palettes": "./themes/simple-light/palettes.js",
+    "./themes/simple-light/presets": "./themes/simple-light/presets.js",
+    "./themes/simple-light/presets.css": "./themes/simple-light/presets.css",
     "./themes/simple-light/styles.css": "./themes/simple-light/styles.css",
     "./content-lock": "./src/content-lock/index.js",
-    "./video-plan": "./src/video-plan/index.js"
+    "./video-plan": "./src/video-plan/index.js",
+    "./timeline": "./src/timeline/index.js"
   },
   "scripts": {
     "test": "node --test"

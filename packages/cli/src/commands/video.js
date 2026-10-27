@@ -15,6 +15,11 @@ import { promises as fs } from "node:fs";
 import fsSync from "node:fs";
 import path from "node:path";
 
+async function loadStopRevealPresetCatalog() {
+  const { STOP_REVEAL_PRESET_CATALOG } = await import("@55aaseclab/lattice-runtime/themes/simple-light/presets");
+  return STOP_REVEAL_PRESET_CATALOG;
+}
+
 export async function videoCommand({ args, rest }) {
   const [subcommand] = rest;
 
@@ -23,9 +28,22 @@ export async function videoCommand({ args, rest }) {
 
 Usage:
   lattice video plan --deck <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
+  lattice video presets
   lattice video doctor --backend remotion|hyperframes
   lattice video still --deck <id> --backend <id> --frame <n> [--route <name>] [--bundle-dir <dir>] [--output <path>]
   lattice video render --deck <id> --backend <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
+  lattice video ui [--port <port>]
+
+"lattice video presets" prints the theme's machine-readable stop-reveal
+animation preset catalog (names, parameter schema, defaults). Agents choose
+presets and parameters from this catalog; "lattice edit --timeline" validates
+values against it before writing anything.
+
+"lattice video ui" starts the M7 video workbench (default port 4700, bound to
+127.0.0.1): deck list, unified timeline visualization, backend doctor,
+queued MP4 rendering, in-page timeline preview driven by the Slide Runtime,
+and artifact download. Rendered outputs are server-enforced to stay under
+.lattice/generated/.
 
 "lattice video plan" compiles an engine-neutral integer-frame VideoPlan
 (schema "${VIDEO_PLAN_SCHEMA}") from the deck's videoPlan descriptor. The
@@ -42,6 +60,13 @@ descriptor contract is a routes map plus timing slides:
     width: 960,
     height: 540,
   };
+
+For lattice.deck.v2 decks the timing comes from the canonical slide
+definitions. A deck may additionally declare a unified presentation timeline
+(lattice.timeline.v1) in manifest.timeline: per-slide segment durations, stop
+frames, animation presets, and audio tracks. Plans for such decks are
+compiled under schema "${VIDEO_PLAN_SCHEMA_V2}" and carry each clip's stop
+schedule; decks without a timeline keep the exact v1 plan bytes.
 
 The route is selected with --route (default "main"). No backend installation
 is required and no backend is initialized. Provenance is derived from real
@@ -62,13 +87,20 @@ selected backend into a PNG (--frame is required). "lattice video render"
 renders the complete plan into an MP4. Both commands prepare the backend's
 generated host under .lattice/generated/<backend>/ from the same VideoPlan
 and Slide Web Bundle; outputs must not be written into the canonical deck
-source or bundle. Missing backend dependencies exit 2 with install guidance.
+source or bundle. Plans that declare audioTracks get them mixed into a
+single audio track in the rendered MP4. Missing backend dependencies exit 2
+with install guidance.
 `);
     return;
   }
 
   if (subcommand === "plan") {
     await handleVideoPlan({ args });
+    return;
+  }
+
+  if (subcommand === "presets") {
+    await handleVideoPresets();
     return;
   }
 
@@ -84,6 +116,12 @@ source or bundle. Missing backend dependencies exit 2 with install guidance.
 
   if (subcommand === "render") {
     await handleVideoRender({ args });
+    return;
+  }
+
+  if (subcommand === "ui") {
+    const { videoUiCommand } = await import("../video/ui/command.js");
+    await videoUiCommand({ args });
     return;
   }
 
@@ -136,6 +174,10 @@ function resolveVideoPlanDescriptor(contentMod, deckId) {
  * canonical slide definitions (durationFrames, inputProps). The slide entry
  * module is loaded through the project's vite pipeline so CSS-importing
  * slide sources behave exactly like every other Lattice surface.
+ *
+ * M7: when the manifest declares a lattice.timeline.v1, the descriptor
+ * carries the resolved unified timeline — per-slide segment durations, stop
+ * frames, and animation declarations replace the static placeholder timing.
  */
 async function descriptorFromDeckV2({ deckId, deckDir, manifest }) {
   const entrySlides = manifest.entry?.slides;
@@ -162,6 +204,26 @@ async function descriptorFromDeckV2({ deckId, deckDir, manifest }) {
         process.exit(1);
       }
     }
+
+    let resolvedTimeline = null;
+    if (manifest.timeline !== undefined) {
+      const { resolveTimeline } = await import("@55aaseclab/lattice-runtime/timeline");
+      const { validateStopRevealAnimation } = await import("@55aaseclab/lattice-runtime/themes/simple-light/presets");
+      const resolution = resolveTimeline({
+        manifest,
+        slides: slideDefinitions,
+        validateAnimation: (animation, options) => validateStopRevealAnimation(animation, options),
+      });
+      if (!resolution.ok) {
+        console.error(`[lattice] deck "${deckId}" declares an invalid lattice.timeline.v1:`);
+        for (const error of resolution.errors) {
+          console.error(`  - [${error.type}] ${error.element ?? error.slide ?? ""}: ${error.message}`);
+        }
+        process.exit(1);
+      }
+      resolvedTimeline = resolution.timeline;
+    }
+
     return {
       routes: manifest.routes,
       slides: slideDefinitions.map((slide) => ({
@@ -169,6 +231,7 @@ async function descriptorFromDeckV2({ deckId, deckDir, manifest }) {
         durationFrames: slide.durationFrames,
         inputProps: slide.inputProps,
       })),
+      resolvedTimeline,
       fps: manifest.fps,
       width: manifest.canvas?.width,
       height: manifest.canvas?.height,
@@ -187,6 +250,7 @@ function normalizeDescriptor({ descriptor }) {
   return {
     routes: descriptor.routes,
     slides: descriptor.slides,
+    resolvedTimeline: descriptor.resolvedTimeline,
     fps: descriptor.fps,
     width: descriptor.width,
     height: descriptor.height,
@@ -317,7 +381,12 @@ async function resolveBundleIdentity({ args, descriptor, deckId, config, deckDir
   process.exit(2);
 }
 
-async function compileDeckVideoPlan({ args, config }) {
+/**
+ * Compile the complete VideoPlan for one deck (M3 contract, M7 timeline
+ * extension). Exported for the video workbench, which renders through the
+ * exact same compile path as the CLI so artifacts share one planHash.
+ */
+export async function compileDeckVideoPlan({ args, config }) {
   const deckId = args.deck;
   if (!deckId || typeof deckId !== "string") {
     console.error("[lattice] video plan requires --deck <id>");
@@ -364,8 +433,15 @@ async function compileDeckVideoPlan({ args, config }) {
     descriptorOrigin = resolved.origin;
   }
 
-  const { routes: descriptorRoutes, slides: descriptorSlides, fps, width, height, audioTracks, inputProps } =
+  const { routes: descriptorRoutes, slides: descriptorSlides, resolvedTimeline, fps, width, height, audioTracks, inputProps } =
     await normalizeDescriptor({ descriptor, deckId, manifest });
+
+  // M7 unified timeline: when the deck declares a lattice.timeline.v1 the
+  // plan consumes the resolved timing — per-slide segment durations, stop
+  // frames, and animation declarations — instead of the static placeholder
+  // timing. Decks without a timeline compile the exact v1 plan as before.
+  const timelineById = new Map((resolvedTimeline?.slides ?? []).map((entry) => [entry.slideId, entry]));
+  const timelineAudioTracks = resolvedTimeline?.audioTracks;
 
   if (!descriptorRoutes || typeof descriptorRoutes !== "object" || Array.isArray(descriptorRoutes)) {
     console.error("[lattice] videoPlan descriptor must have a 'routes' map (object), e.g. routes: { main: [...] }");
@@ -408,15 +484,23 @@ async function compileDeckVideoPlan({ args, config }) {
     deckId,
     routeId: chosenRouteId,
     routes: descriptorRoutes,
-    slides: descriptorSlides.map((s) => ({
-      id: s.id,
-      durationFrames: s.durationFrames,
-      inputProps: s.inputProps ?? {},
-    })),
+    slides: descriptorSlides.map((s) => {
+      const entry = timelineById.get(s.id);
+      const compiled = {
+        id: s.id,
+        durationFrames: entry?.durationFrames ?? s.durationFrames,
+        inputProps: s.inputProps ?? {},
+      };
+      if (entry) {
+        compiled.stops = entry.stops.map((stop) => ({ id: stop.id, frame: stop.frame }));
+        if (entry.animation) compiled.animation = entry.animation;
+      }
+      return compiled;
+    }),
     width: width ?? 960,
     height: height ?? 540,
     fps: fps ?? 30,
-    audioTracks: audioTracks ?? [],
+    audioTracks: timelineAudioTracks ?? audioTracks ?? [],
     inputProps: inputProps ?? {},
   });
 
@@ -471,6 +555,18 @@ async function compileDeckVideoPlan({ args, config }) {
     descriptorOrigin,
     routeId: chosenRouteId,
   };
+}
+
+/**
+ * M7 1b — machine-readable preset catalog: the theme's named stop-reveal
+ * animation presets with their parameter schema and defaults. Agents select
+ * presets and parameters from this catalog; "lattice edit --timeline"
+ * validates values against the same catalog before anything is written, so
+ * an illegal preset or parameter is refused at edit time.
+ */
+async function handleVideoPresets() {
+  const catalog = await loadStopRevealPresetCatalog();
+  process.stdout.write(`${JSON.stringify(catalog, null, 2)}\n`);
 }
 
 async function handleVideoPlan({ args }) {

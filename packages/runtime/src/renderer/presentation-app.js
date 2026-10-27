@@ -751,7 +751,7 @@ function escapeHtml(value) {
  * Portal entry: boots the v2 presentation for the selected deck id, with an
  * explicit unknown-deck error surface (no fallback to the v1 deck app).
  */
-export function bootPresentation(container, { deckId, v2Decks, presenter = false, location = window.location } = {}) {
+export async function bootPresentation(container, { deckId, v2Decks, presenter = false, location = window.location } = {}) {
   const deck = v2Decks?.[deckId];
   if (!deck) {
     const failure = renderPresentationError(container, {
@@ -769,6 +769,13 @@ export function bootPresentation(container, { deckId, v2Decks, presenter = false
       };
     }
     return failure;
+  }
+  // M7: decks that declare timeline animation load the theme's preset
+  // stylesheet (presets are theme-owned, versioned, and inert without the
+  // data-lattice-anim surface). Decks without animation keep their exact
+  // module graph untouched.
+  if (deck.slides?.some((slide) => slide?.animation)) {
+    await import("@55aaseclab/lattice-runtime/themes/simple-light/presets.css");
   }
   return renderPresentationApp(container, deck, { presenter, location });
 }

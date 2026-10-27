@@ -260,19 +260,26 @@ export function computeDeckSemanticPayload({
 
   // Semantic manifest identity only. Pure theme/runtime selection is
   // presentation state, not content: swapping theme or bumping the runtime
-  // range must never alter the content fingerprint.
-  const manifestPayload = manifest
-    ? (({ schema, id, title, owner, presenter, publication, sources, references }) => ({
-        schema,
-        id,
-        title,
-        owner,
-        presenter,
-        publication: publication || undefined,
-        sources: sources || undefined,
-        references: references || undefined,
-      }))(manifest)
-    : {};
+  // range must never alter the content fingerprint. The M7 deck timeline
+  // (lattice.timeline.v1) IS frozen identity when declared: timing changes
+  // must pass the Content Lock gate with explicit authorization. The key is
+  // added only when present so every pre-M7 deck hashes byte-identically to
+  // its stored lock.
+  let manifestPayload = {};
+  if (manifest) {
+    const { schema, id, title, owner, presenter, publication, sources, references } = manifest;
+    manifestPayload = {
+      schema,
+      id,
+      title,
+      owner,
+      presenter,
+      publication: publication || undefined,
+      sources: sources || undefined,
+      references: references || undefined,
+    };
+    if (manifest.timeline) manifestPayload.timeline = manifest.timeline;
+  }
 
   return {
     slideCount: slidesPayload.length,

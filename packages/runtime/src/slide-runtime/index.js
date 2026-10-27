@@ -19,6 +19,29 @@ export { FRAME_ADDRESS_VARIABLES, assertFrameAddress };
 
 const APPLY_ATTRIBUTES = ["data-lattice-frame", "data-lattice-stop", "data-lattice-stop-index", "data-lattice-revealed-stops"];
 
+// M7 stop-reveal animation surface: container attributes/variables derived
+// from the slide's timeline animation declaration, plus the per-element
+// `--lattice-reveal-offset` variable applied to every data-lattice-reveal
+// marker. All values are pure functions of the integer frame, so seeks stay
+// history-independent and every surface paints identical frames.
+const ANIMATION_ATTRIBUTES = ["data-lattice-anim", "data-lattice-anim-direction"];
+const ANIMATION_VARIABLES = [
+  "--lattice-anim-duration-frames",
+  "--lattice-anim-distance",
+  "--lattice-anim-stagger-frames",
+];
+const REVEAL_VARIABLE = "--lattice-reveal-offset";
+
+/**
+ * Per-element reveal offset: frames since the element's stop revealed,
+ * extended by the element's stagger index so every element of a stop
+ * completes its window exactly on the stop frame. Shared semantics with the
+ * video hosts' generated frame drivers.
+ */
+export function computeRevealOffset(localFrame, stopFrame, staggerIndex, stagger) {
+  return localFrame - stopFrame + staggerIndex * stagger;
+}
+
 export function resolveSlideHtml(slide) {
   return typeof slide.html === "function" ? slide.html() : slide.html;
 }
@@ -67,6 +90,11 @@ export function computeSlideFrameState(slide, localFrame) {
     if (stop.frame <= localFrame) revealedStopIds.push(stop.id);
   }
 
+  const stopFrameById = {};
+  for (const stop of stops) {
+    stopFrameById[stop.id] = stop.frame;
+  }
+
   return {
     localFrame,
     stopId: active.id,
@@ -74,6 +102,8 @@ export function computeSlideFrameState(slide, localFrame) {
     stopFrame: active.frame,
     navigation: active.navigation ?? "jump",
     revealedStopIds,
+    stopFrameById,
+    animation: slide.animation ?? null,
     variables: {
       "--lattice-local-frame": String(localFrame),
       "--lattice-duration-frames": String(durationFrames),
@@ -91,12 +121,12 @@ export function computeSlideFrameState(slide, localFrame) {
  */
 export function snapshotSlideFrameState(container) {
   const attributes = {};
-  for (const name of APPLY_ATTRIBUTES) {
+  for (const name of [...APPLY_ATTRIBUTES, ...ANIMATION_ATTRIBUTES]) {
     const value = container.getAttribute?.(name);
     if (value !== null && value !== undefined) attributes[name] = value;
   }
   const variables = {};
-  for (const name of FRAME_ADDRESS_VARIABLES) {
+  for (const name of [...FRAME_ADDRESS_VARIABLES, ...ANIMATION_VARIABLES]) {
     const value = container.style?.getPropertyValue?.(name);
     if (value !== undefined && value !== null && value !== "") variables[name] = value;
   }
@@ -107,8 +137,59 @@ function clearFrameState(container) {
   for (const name of APPLY_ATTRIBUTES) {
     container.removeAttribute?.(name);
   }
-  for (const name of FRAME_ADDRESS_VARIABLES) {
+  for (const name of [...FRAME_ADDRESS_VARIABLES, ...ANIMATION_VARIABLES]) {
     container.style?.removeProperty?.(name);
+  }
+  for (const name of ANIMATION_ATTRIBUTES) {
+    container.removeAttribute?.(name);
+  }
+}
+
+function applyAnimationState(container, animation) {
+  if (!animation) return;
+  container.setAttribute?.("data-lattice-anim", animation.preset);
+  if (animation.direction !== undefined) {
+    container.setAttribute?.("data-lattice-anim-direction", animation.direction);
+  }
+  if (animation.durationFrames !== undefined) {
+    container.style?.setProperty?.("--lattice-anim-duration-frames", String(animation.durationFrames));
+  }
+  if (animation.distancePx !== undefined) {
+    container.style?.setProperty?.("--lattice-anim-distance", `${animation.distancePx}px`);
+  }
+  if (animation.stagger !== undefined) {
+    container.style?.setProperty?.("--lattice-anim-stagger-frames", String(animation.stagger));
+  }
+}
+
+/**
+ * Apply the per-element reveal offsets for this frame. Elements mark their
+ * stop with data-lattice-reveal="<stopId>"; an unknown stop id is a hard
+ * error (fail-fast, never a silently wrong reveal). When the slide declares
+ * no animation the marker variable is cleared so stale values can never
+ * surface.
+ */
+function applyRevealState(container, state) {
+  if (typeof container.querySelectorAll !== "function") return;
+  const stagger = state.animation?.stagger ?? 0;
+  const hasAnimation = Boolean(state.animation);
+  const elements = container.querySelectorAll("[data-lattice-reveal]");
+  const counters = new Map();
+  for (const element of elements) {
+    const stopId = element.getAttribute?.("data-lattice-reveal") ?? "";
+    if (!hasAnimation) {
+      element.style?.removeProperty?.(REVEAL_VARIABLE);
+      continue;
+    }
+    const stopFrame = state.stopFrameById?.[stopId];
+    if (!Number.isInteger(stopFrame)) {
+      throw new Error(
+        `slide element data-lattice-reveal="${stopId}" does not reference a stop of slide (stops: ${Object.keys(state.stopFrameById ?? {}).join(", ")})`,
+      );
+    }
+    const staggerIndex = counters.get(stopId) ?? 0;
+    counters.set(stopId, staggerIndex + 1);
+    element.style?.setProperty?.(REVEAL_VARIABLE, String(computeRevealOffset(state.localFrame, stopFrame, staggerIndex, stagger)));
   }
 }
 
@@ -121,6 +202,8 @@ function applyFrameState(container, state) {
   container.setAttribute?.("data-lattice-stop", state.stopId);
   container.setAttribute?.("data-lattice-stop-index", String(state.stopIndex));
   container.setAttribute?.("data-lattice-revealed-stops", state.revealedStopIds.join(" "));
+  applyAnimationState(container, state.animation);
+  applyRevealState(container, state);
 }
 
 function nextTick({ requestAnimationFrame }) {

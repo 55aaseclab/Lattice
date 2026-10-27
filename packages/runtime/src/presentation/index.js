@@ -22,6 +22,8 @@
  */
 
 import { DECK_SCHEMA_V2, isStableDeckId } from "../deck-v2/index.js";
+import { resolveTimeline } from "../timeline/index.js";
+import { validateStopRevealAnimation } from "../../themes/simple-light/presets.js";
 
 export const PRESENTATION_MAIN_ROUTE = "main";
 
@@ -160,6 +162,25 @@ export function createPresentationModel(deck) {
  * Rejects any manifest that is not explicitly lattice.deck.v2 — v1 sources
  * are never silently upgraded (A08).
  */
+/**
+ * Merge a resolved timeline entry back onto a slide definition: the timeline
+ * re-times segments and stops (replacing the M1 static placeholder frames)
+ * and carries the slide's animation declaration; content, notes routing, and
+ * stop navigation modes stay with the slide definition.
+ */
+function applyTimelineToSlide(slide, entry) {
+  const definitionStops = new Map(slide.stops.map((stop) => [stop.id, stop]));
+  const stops = entry.stops.map((timedStop) => {
+    const definitionStop = definitionStops.get(timedStop.id);
+    const merged = { id: timedStop.id, frame: timedStop.frame };
+    if (definitionStop && definitionStop.navigation !== undefined) merged.navigation = definitionStop.navigation;
+    return merged;
+  });
+  const timed = { ...slide, durationFrames: entry.durationFrames, stops };
+  if (entry.animation) timed.animation = entry.animation;
+  return timed;
+}
+
 export function createV2DeckDescriptor({ manifest, slides, notes = {}, title } = {}) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     fail("createV2DeckDescriptor requires a manifest object");
@@ -181,13 +202,35 @@ export function createV2DeckDescriptor({ manifest, slides, notes = {}, title } =
       }
     }
   }
+
+  // M7: a declared lattice.timeline.v1 re-times every surface from one
+  // declaration. Decks without a timeline keep the static slide timing
+  // exactly, so frozen decks present byte-for-byte as before.
+  let effectiveSlides = slides;
+  if (manifest.timeline !== undefined) {
+    const resolution = resolveTimeline({
+      manifest,
+      slides,
+      validateAnimation: (animation, options) => validateStopRevealAnimation(animation, options),
+    });
+    if (!resolution.ok) {
+      const detail = resolution.errors.map((error) => error.message ?? String(error)).join("; ");
+      fail(`createV2DeckDescriptor: deck "${manifest.id}" declares an invalid timeline: ${detail}`);
+    }
+    const entriesById = new Map(resolution.timeline.slides.map((entry) => [entry.slideId, entry]));
+    effectiveSlides = slides.map((slide) => {
+      const entry = entriesById.get(slide.id);
+      return entry ? applyTimelineToSlide(slide, entry) : slide;
+    });
+  }
+
   return Object.freeze({
     id: manifest.id,
     title: title ?? manifest.title,
     fps: manifest.fps,
     canvas: manifest.canvas ? Object.freeze({ ...manifest.canvas }) : null,
     routes: Object.freeze(Object.fromEntries(Object.entries(manifest.routes).map(([key, value]) => [key, Object.freeze([...value])]))),
-    slides: Object.freeze([...slides]),
+    slides: Object.freeze([...effectiveSlides]),
     notes: Object.freeze({ ...notes }),
   });
 }

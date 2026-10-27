@@ -18,10 +18,19 @@ export {
   computeSlideFrameState,
   createSlideResourcesWaiter,
   createSlideRuntime,
+  computeRevealOffset,
   resolveSlideHtml,
   snapshotSlideFrameState,
   waitForSlideResources,
 } from "./slide-runtime/index.js";
+export {
+  TIMELINE_DEFAULT_RHYTHM,
+  TIMELINE_SCHEMA,
+  collectRevealMarkerIds,
+  deriveStopFrames,
+  resolveTimeline,
+  validateTimelineDeclaration,
+} from "./timeline/index.js";
 export {
   PRESENTATION_MAIN_ROUTE,
   PRESENTATION_URL_PARAMS,

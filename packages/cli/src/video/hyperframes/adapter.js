@@ -11,6 +11,7 @@ import { resolveGeneratedWorkDir } from "../generated-path.js";
 import { validateSlideWebBundle } from "../bundle.js";
 import { generateHyperFramesHost, resolveVendoredGsapSource } from "./host-template.js";
 import { probeArtifactWithFfprobe, resolveFfprobeExecutable } from "../remotion/probe.js";
+import { mixPlanAudioIntoVideo, readPlanFromWorkDir } from "../audio-mix.js";
 import {
   assertHostClipsBound,
   captureStillViaSnapshot,
@@ -519,6 +520,28 @@ export function createHyperFramesBackend({ probe = null } = {}) {
             ) ? error.cause : "render-failed",
           },
         );
+      }
+
+      // M7 audioTracks: same ffmpeg post-mix as the other backend so both
+      // produce audio-identical artifacts for the same plan.
+      const plan = await readPlanFromWorkDir({ workDir: prepared.workDir, backendId: HYPERFRAMES_BACKEND_ID });
+      if ((plan?.audioTracks ?? []).length > 0) {
+        try {
+          await mixPlanAudioIntoVideo({ plan, bundleDir: prepared.bundlePath, videoPath: resolvedOutput, backendId: HYPERFRAMES_BACKEND_ID });
+        } catch (error) {
+          const failureLog = await writeHyperFramesFailureLog({
+            workDir: prepared.workDir,
+            kind: "audio-mix",
+            planHash: prepared.planHash,
+            context: { output: resolvedOutput },
+            error,
+            diagnostics: [],
+          });
+          throw new VideoBackendError(
+            `HyperFrames audio mix failed: ${error?.message ?? String(error)}` + (failureLog ? ` (failure log: ${failureLog})` : ""),
+            { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "audio-mix-failed" },
+          );
+        }
       }
 
       const { ffprobePath } = await resolveFfprobeExecutable({ backendId: HYPERFRAMES_BACKEND_ID });

@@ -52,9 +52,11 @@ Usage:
                   [--report-dir <dir>] [--dry-run]
   lattice preview [--port <port>] [--host <host>]
   lattice video plan --deck <id> [--route <name>] [--bundle-dir <dir>] [--output <path>]
+  lattice video presets
   lattice video doctor --backend remotion|hyperframes
   lattice video still --deck <id> --backend <id> --frame <n> [--output <path>]
   lattice video render --deck <id> --backend <id> [--output <path>]
+  lattice video ui [--port <port>]
   lattice template list
   lattice template show <template-id>
   lattice template scaffold <template-id> --deck <deckId> [--title <t>] [--stages <n>]
@@ -86,14 +88,21 @@ Prompt-driven authoring (M6) — the machine-consumable convergence loop:
 
 Video commands (M3):
   "lattice video plan" compiles an engine-neutral integer-frame VideoPlan
-  without requiring any video backend installed or initialized. It validates
-  the selected route from the descriptor routes map (--route, default "main"),
-  linearises slides into non-overlapping clips, computes totalFrames, bakes
-  provenance from real deck sources and a real Slide Web Bundle identity, and
-  writes deterministic canonical JSON.
+without requiring any video backend installed or initialized. It validates
+the selected route from the descriptor routes map (--route, default "main"),
+linearises slides into non-overlapping clips, computes totalFrames, bakes
+provenance from real deck sources and a real Slide Web Bundle identity, and
+writes deterministic canonical JSON.
   "lattice video doctor" inspects the selected backend environment. It reports
-  tool presence, versions, paths, and install guidance. It never installs
-  dependencies.
+tool presence, versions, paths, and install guidance. It never installs
+dependencies.
+  "lattice video presets" prints the theme's machine-readable stop-reveal
+animation preset catalog. "lattice edit --timeline <path>" edits a deck's
+lattice.timeline.v1 declaration (segment durations, stop frames, animation
+presets, audio tracks) through the same auditable loop as content edits.
+  "lattice video ui" opens the video workbench (default port 4700 on
+127.0.0.1): deck list, timeline visualization, backend doctor, queued
+rendering, Slide-Runtime timeline preview, and artifact download.
 
 Exit codes: 0=success, 1=content/validation failure, 2=configuration or
 infrastructure failure.

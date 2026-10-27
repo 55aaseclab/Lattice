@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { STOP_FRAME_STATE_FUNCTIONS_SOURCE, resolveStopFrameState } from "../stop-frame-state.js";
 
 export const HYPERFRAMES_HOST_SCHEMA = "lattice.hyperframes-host.v1";
 export const HYPERFRAMES_COMPOSITION_ID = "root";
@@ -80,6 +81,20 @@ export async function resolveVendoredGsapSource() {
   return source;
 }
 
+/**
+ * The theme's stop-reveal preset stylesheet (M7), inlined into the
+ * composition head of animation plans only — the Slide Web Bundle itself is
+ * never modified, so static decks keep byte-identical bundles and hashes.
+ */
+export async function loadStopRevealPresetCss() {
+  const { resolveRuntimeRoot } = await import("../../config/index.js");
+  const source = await fs.readFile(path.join(resolveRuntimeRoot(), "themes", "simple-light", "presets.css"), "utf8");
+  if (source.includes("</style")) {
+    throw new Error("the stop-reveal preset stylesheet cannot be inlined into the composition (contains </style>)");
+  }
+  return source.trim();
+}
+
 function stylesheetTag(entry) {
   if (entry.kind === "link") {
     return `<link rel="stylesheet" crossorigin href="${escapeAttributeValue(entry.href)}">`;
@@ -147,15 +162,24 @@ export async function generateHyperFramesHost({ workDir, plan, planHash, bundleP
   // k binds to content.slides[k]; when the bundle has fewer slides the clip
   // stays unbound (contentIndex null) and rendering fails fast instead of
   // silently rendering the wrong slide.
-  const clips = plan.clips.map((clip, index) => ({
-    slideId: clip.slideId,
-    startFrame: clip.startFrame,
-    durationFrames: clip.durationFrames,
-    contentIndex: index < contentSlides.length ? index : null,
-    html: index < contentSlides.length && typeof contentSlides[index]?.html === "string"
-      ? contentSlides[index].html
-      : null,
-  }));
+  const clips = plan.clips.map((clip, index) => {
+    const bound = {
+      slideId: clip.slideId,
+      startFrame: clip.startFrame,
+      durationFrames: clip.durationFrames,
+      contentIndex: index < contentSlides.length ? index : null,
+      html: index < contentSlides.length && typeof contentSlides[index]?.html === "string"
+        ? contentSlides[index].html
+        : null,
+    };
+    // M7 lattice.video-plan.v2: timeline clips carry the stop schedule and
+    // (optionally) the animation declaration; the composition driver applies
+    // the canonical stop frame state per frame. v1 plans keep the exact
+    // clip shape.
+    if (Array.isArray(clip.stops)) bound.stops = clip.stops.map((stop) => ({ id: stop.id, frame: stop.frame }));
+    if (clip.animation !== undefined) bound.animation = { ...clip.animation };
+    return bound;
+  });
 
   const hostManifest = {
     doNotEdit: `${DO_NOT_EDIT} Source plan hash: ${planHash}`,
@@ -177,7 +201,7 @@ export async function generateHyperFramesHost({ workDir, plan, planHash, bundleP
   const manifestPath = path.join(publicDir, HOST_PUBLIC_MANIFEST_NAME);
   await fs.writeFile(manifestPath, serializeHostManifest(hostManifest), "utf8");
 
-  const compositionSource = buildCompositionDocument({
+  const compositionSource = await buildCompositionDocument({
     plan,
     planHash,
     bundleHash,
@@ -205,7 +229,7 @@ export async function generateHyperFramesHost({ workDir, plan, planHash, bundleP
  * runtime and producer seek it, and its onUpdate resolves the active plan
  * clip for the canonical integer frame and applies the frame state.
  */
-function buildCompositionDocument({ plan, planHash, bundleHash, clips, stylesheets, gsapSource }) {
+async function buildCompositionDocument({ plan, planHash, bundleHash, clips, stylesheets, gsapSource }) {
   const width = plan.width;
   const height = plan.height;
   const fps = plan.fps;
@@ -231,8 +255,42 @@ function buildCompositionDocument({ plan, planHash, bundleHash, clips, styleshee
     .map((family) => `@font-face{font-family:${JSON.stringify(family)};src:local(${JSON.stringify(family)})}`)
     .join("");
 
+  // M7: animation plans inline the theme's stop-reveal preset stylesheet.
+  const hasAnimation = clips.some((clip) => clip.animation !== undefined);
+  const presetStyleTag = hasAnimation ? `<style>${await loadStopRevealPresetCss()}</style>` : "";
+
   const firstClip = clips[0];
   const firstHtml = firstClip && firstClip.html !== null ? firstClip.html : "";
+
+  // Initial canvas state at frame 0: same surface the per-frame driver
+  // applies (stop attributes/variables only exist for timeline clips).
+  const firstStopState = firstClip?.stops?.length ? resolveStopFrameState(firstClip.stops, 0) : null;
+  const firstVariables = [
+    "--lattice-local-frame:0",
+    `--lattice-duration-frames:${firstClip?.durationFrames ?? 0}`,
+  ];
+  if (firstStopState) {
+    firstVariables.push(
+      `--lattice-stop-index:${firstStopState.stopIndex}`,
+      `--lattice-stop-frame:${firstStopState.stopFrame}`,
+      `--lattice-stop-span:${firstStopState.span}`,
+      `--lattice-stop-frame-offset:${firstStopState.offset}`,
+    );
+  }
+  if (firstClip?.animation) {
+    if (firstClip.animation.durationFrames !== undefined) firstVariables.push(`--lattice-anim-duration-frames:${firstClip.animation.durationFrames}`);
+    if (firstClip.animation.distancePx !== undefined) firstVariables.push(`--lattice-anim-distance:${firstClip.animation.distancePx}px`);
+    if (firstClip.animation.stagger !== undefined) firstVariables.push(`--lattice-anim-stagger-frames:${firstClip.animation.stagger}`);
+  }
+  const firstAnimationAttributes = firstClip?.animation
+    ? ` data-lattice-anim="${escapeAttributeValue(firstClip.animation.preset)}"` +
+      (firstClip.animation.direction ? ` data-lattice-anim-direction="${escapeAttributeValue(firstClip.animation.direction)}"` : "")
+    : "";
+  const firstStopAttributes = firstStopState
+    ? ` data-lattice-stop="${escapeAttributeValue(firstStopState.stopId)}"` +
+      ` data-lattice-stop-index="${firstStopState.stopIndex}"` +
+      ` data-lattice-revealed-stops="${escapeAttributeValue(firstStopState.revealedStops.join(" "))}"`
+    : "";
 
   return [
     "<!doctype html>",
@@ -252,6 +310,7 @@ function buildCompositionDocument({ plan, planHash, bundleHash, clips, styleshee
     "<style>html,body,*{text-rendering:auto}</style>",
     `<base href="./${HOST_BUNDLE_DIRNAME}/">`,
     stylesheets.map(stylesheetTag).join("\n"),
+    ...(presetStyleTag ? [presetStyleTag] : []),
     "<style>html,body{margin:0;padding:0;background:#ffffff;overflow:hidden}</style>",
     `<script>${gsapSource}</script>`,
     "</head>",
@@ -260,12 +319,12 @@ function buildCompositionDocument({ plan, planHash, bundleHash, clips, styleshee
       ` data-width="${width}" data-height="${height}" data-fps="${fps}"` +
       ` data-duration="${formatDurationSeconds(durationSeconds)}">`,
     `<div class="lattice-video-canvas" id="lattice-canvas" data-lattice-slide-id="${escapeAttributeValue(firstClip?.slideId ?? "")}"` +
-      ` data-lattice-frame="0"` +
-      ` style="--lattice-local-frame:0;--lattice-duration-frames:${firstClip?.durationFrames ?? 0};` +
+      ` data-lattice-frame="0"${firstStopAttributes}${firstAnimationAttributes}` +
+      ` style="${escapeAttributeValue(firstVariables.join(";"))};` +
       `width:${width}px;height:${height}px;position:relative;overflow:hidden;background:#ffffff">${firstHtml}</div>`,
     "</div>",
     `<script>window.LATTICE_HOST = ${serializeInlineScriptJson(hostConfig)};</script>`,
-    `<script>${compositionDriverSource()}</script>`,
+    `<script>${compositionDriverSource({ hasStopSchedule: clips.some((clip) => Array.isArray(clip.stops)) })}</script>`,
     "</body>",
     "</html>",
     "",
@@ -317,14 +376,45 @@ function collectRequestedFontStackFamilies(clips, stylesheets) {
   return families;
 }
 
-function compositionDriverSource() {
+// M7: the per-frame stop/animation application block, spliced into the
+// composition driver only for timeline plans (v1 plans generate the exact
+// pre-timeline driver source).
+const STOP_APPLY_BLOCK_SOURCE = String.raw`    if (clip.stops && clip.stops.length) {
+      var stopState = __latticeStopState(clip.stops, localFrame);
+      canvas.setAttribute("data-lattice-stop", stopState.stopId);
+      canvas.setAttribute("data-lattice-stop-index", String(stopState.stopIndex));
+      canvas.setAttribute("data-lattice-revealed-stops", stopState.revealedStops.join(" "));
+      canvas.style.setProperty("--lattice-stop-index", String(stopState.stopIndex));
+      canvas.style.setProperty("--lattice-stop-frame", String(stopState.stopFrame));
+      canvas.style.setProperty("--lattice-stop-span", String(stopState.span));
+      canvas.style.setProperty("--lattice-stop-frame-offset", String(stopState.offset));
+      if (clip.animation) {
+        canvas.setAttribute("data-lattice-anim", clip.animation.preset);
+        if (clip.animation.direction) {
+          canvas.setAttribute("data-lattice-anim-direction", clip.animation.direction);
+        }
+        if (clip.animation.durationFrames !== undefined) {
+          canvas.style.setProperty("--lattice-anim-duration-frames", String(clip.animation.durationFrames));
+        }
+        if (clip.animation.distancePx !== undefined) {
+          canvas.style.setProperty("--lattice-anim-distance", String(clip.animation.distancePx) + "px");
+        }
+        if (clip.animation.stagger !== undefined) {
+          canvas.style.setProperty("--lattice-anim-stagger-frames", String(clip.animation.stagger));
+        }
+      }
+      __latticeApplyRevealOffsets(canvas, clip.stops, localFrame, clip.animation || null);
+    }
+`;
+
+function compositionDriverSource({ hasStopSchedule }) {
   return String.raw`(function () {
   "use strict";
   var cfg = window.LATTICE_HOST;
   var canvas = document.getElementById("lattice-canvas");
   var currentSlideId = canvas.getAttribute("data-lattice-slide-id");
   var appliedKey = null;
-
+` + (hasStopSchedule ? STOP_FRAME_STATE_FUNCTIONS_SOURCE : "") + String.raw`
   // Plan clips are contiguous by compile contract; a miss is a hard error,
   // never a fallback to a neighbouring clip.
   function resolveClipAtFrame(frame) {
@@ -353,7 +443,7 @@ function compositionDriverSource() {
     canvas.setAttribute("data-lattice-frame", String(localFrame));
     canvas.style.setProperty("--lattice-local-frame", String(localFrame));
     canvas.style.setProperty("--lattice-duration-frames", String(clip.durationFrames));
-  }
+` + (hasStopSchedule ? STOP_APPLY_BLOCK_SOURCE : "") + String.raw`  }
 
   var timeline = window.gsap.timeline({ paused: true });
   timeline.to({ t: 0 }, {

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lattice Video Workbench</title>
+    <link rel="stylesheet" href="./app.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <header class="wb-header">
+      <div>
+        <h1>Lattice Video Workbench</h1>
+        <p class="wb-subtitle">One deck timeline — segments × stops × audio — recorded by the video backends.</p>
+      </div>
+      <div class="wb-header-meta" id="wb-meta"></div>
+    </header>
+    <main class="wb-layout">
+      <aside class="wb-panel wb-decks">
+        <h2>Decks</h2>
+        <ul id="wb-deck-list" class="wb-deck-list"></ul>
+        <h2>Backend doctor</h2>
+        <div id="wb-doctor" class="wb-doctor"></div>
+      </aside>
+      <section class="wb-panel wb-main">
+        <div id="wb-deck-empty" class="wb-empty">Select a deck to inspect its timeline.</div>
+        <div id="wb-deck-view" hidden>
+          <div class="wb-deck-title">
+            <h2 id="wb-deck-name"></h2>
+            <span id="wb-deck-timeline-badge" class="wb-badge" hidden>lattice.timeline.v1</span>
+          </div>
+          <h3>Timeline <span class="wb-muted" id="wb-timeline-summary"></span></h3>
+          <div id="wb-timeline" class="wb-timeline"></div>
+          <h3>Preview — Slide Runtime plays the same timeline</h3>
+          <div class="wb-preview-shell">
+            <div id="wb-preview-stage" class="wb-preview-stage"></div>
+            <div class="wb-preview-controls">
+              <button id="wb-play" type="button">Play</button>
+              <input id="wb-scrubber" type="range" min="0" max="0" value="0" step="1" />
+              <span id="wb-frame-label" class="wb-muted">frame 0 / 0</span>
+              <label class="wb-stop-jump"><span>stop</span><select id="wb-stop-select"></select></label>
+            </div>
+            <p id="wb-preview-error" class="wb-error" hidden></p>
+          </div>
+          <h3>Render</h3>
+          <div class="wb-render-row">
+            <select id="wb-backend-select"></select>
+            <button id="wb-render" type="button">Render MP4</button>
+            <span id="wb-render-status" class="wb-muted"></span>
+          </div>
+          <pre id="wb-render-log" class="wb-log" hidden></pre>
+          <h3>Artifacts <button id="wb-refresh-artifacts" type="button" class="wb-small">Refresh</button></h3>
+          <div id="wb-artifacts" class="wb-artifacts"></div>
+          <div id="wb-artifact-preview" class="wb-artifact-preview"></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

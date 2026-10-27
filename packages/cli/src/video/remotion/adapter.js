@@ -11,6 +11,7 @@ import { resolveGeneratedWorkDir } from "../generated-path.js";
 import { validateSlideWebBundle } from "../bundle.js";
 import { generateRemotionHost } from "./host-template.js";
 import { probeArtifactWithFfprobe, resolveFfprobeExecutable } from "./probe.js";
+import { mixPlanAudioIntoVideo, readPlanFromWorkDir } from "../audio-mix.js";
 import {
   assertHostClipsBound,
   ensureHostBundle,
@@ -550,6 +551,29 @@ export function createRemotionBackend({ probe = null } = {}) {
             cause: "render-failed",
           },
         );
+      }
+
+      // M7 audioTracks: plans that declare audio get them mixed into one
+      // AAC track after the base render (same ffmpeg graph for both
+      // backends); silent plans skip the post-process entirely.
+      const plan = await readPlanFromWorkDir({ workDir: prepared.workDir, backendId: REMOTION_BACKEND_ID });
+      if ((plan?.audioTracks ?? []).length > 0) {
+        try {
+          await mixPlanAudioIntoVideo({ plan, bundleDir: prepared.bundlePath, videoPath: resolvedOutput, backendId: REMOTION_BACKEND_ID });
+        } catch (error) {
+          const failureLog = await writeRemotionFailureLog({
+            workDir: prepared.workDir,
+            kind: "audio-mix",
+            planHash: prepared.planHash,
+            context: { output: resolvedOutput },
+            error,
+            diagnostics: [],
+          });
+          throw new VideoBackendError(
+            `Remotion audio mix failed: ${error?.message ?? String(error)}` + (failureLog ? ` (failure log: ${failureLog})` : ""),
+            { backendId: REMOTION_BACKEND_ID, diagnostics: [], cause: "audio-mix-failed" },
+          );
+        }
       }
 
       const { ffprobePath } = await resolveFfprobeExecutable();

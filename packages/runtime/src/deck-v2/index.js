@@ -9,6 +9,7 @@
  */
 
 import { isRuntimeCompatible } from "../deck/index.js";
+import { validateTimelineDeclaration } from "../timeline/index.js";
 
 export const DECK_SCHEMA_V2 = "lattice.deck.v2";
 
@@ -71,6 +72,7 @@ const MANIFEST_KNOWN_FIELDS = new Set([
   "publication",
   "routes",
   "videoProfiles",
+  "timeline",
   "owner",
   "presenter",
   "runtime",
@@ -620,6 +622,12 @@ export function validateDeckManifestV2(manifest, { expectedId = "", slideIds = n
     validateVideoProfiles(manifest.videoProfiles, errors, {
       routeIds: isPlainObject(manifest.routes) ? Object.keys(manifest.routes) : null,
     });
+  }
+  if (manifest.timeline !== undefined) {
+    // M7 deck timeline contract (lattice.timeline.v1): a versioned,
+    // deck-level timing declaration. Strictly additive — decks without a
+    // timeline keep the static M1 timing everywhere.
+    errors.push(...validateTimelineDeclaration(manifest.timeline).errors);
   }
   if (manifest.runtime !== undefined && typeof manifest.runtime !== "string") {
     errors.push(issue("invalid-manifest", "manifest.runtime must be a version range string when present", { element: "manifest.runtime" }));
