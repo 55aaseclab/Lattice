@@ -1,0 +1,24 @@
+{
+  "schema": "lattice.template.v1",
+  "id": "simple-light",
+  "name": "Simple Light starter deck",
+  "description": "Three-slide starter deck (title, body, main point) built on the shared simple-light Theme layouts. Structure only: replace every placeholder before publishing.",
+  "target": "deck",
+  "baseTheme": "simple-light",
+  "lineage": {
+    "kind": "theme-starter",
+    "note": "Formalizes the shared simple-light runtime Theme as a reusable deck starter. The Theme directory itself is never modified; the scaffolded deck consumes the Theme through the runtime package subpath."
+  },
+  "slots": [
+    { "slide": "intro", "template": "title-slide", "fields": ["title", "subtitle"] },
+    { "slide": "overview", "template": "title-body", "fields": ["title", "body"] },
+    { "slide": "wrap-up", "template": "main-point", "fields": ["title"] }
+  ],
+  "vars": [
+    { "name": "deckId", "required": true, "description": "Deck directory id (stable slug)" },
+    { "name": "title", "description": "Deck title in manifest and registry" },
+    { "name": "owner", "description": "Deck owner handle" },
+    { "name": "presenter", "description": "Presenter name" },
+    { "name": "description", "description": "Optional deck description" }
+  ]
+}

@@ -10,6 +10,9 @@ import { inspectCommand } from "./commands/inspect.js";
 import { screenshotCommand } from "./commands/screenshot.js";
 import { videoCommand } from "./commands/video.js";
 import { migrateCommand } from "./commands/migrate.js";
+import { editCommand } from "./commands/edit.js";
+import { lockCommand } from "./commands/lock.js";
+import { templateCommand } from "./commands/template.js";
 import { ACCUMULATING_FLAGS_BY_COMMAND, parseArgs } from "./args.js";
 
 const commands = {
@@ -24,6 +27,9 @@ const commands = {
   screenshot: screenshotCommand,
   video: videoCommand,
   migrate: migrateCommand,
+  edit: editCommand,
+  lock: lockCommand,
+  template: templateCommand,
 };
 
 async function main() {
@@ -49,6 +55,34 @@ Usage:
   lattice video doctor --backend remotion|hyperframes
   lattice video still --deck <id> --backend <id> --frame <n> [--output <path>]
   lattice video render --deck <id> --backend <id> [--output <path>]
+  lattice template list
+  lattice template show <template-id>
+  lattice template scaffold <template-id> --deck <deckId> [--title <t>] [--stages <n>]
+                            [--dry-run] [--force] [--no-registry-update]
+  lattice edit --deck <id> --slide <slideId> --field <path> --value <json>
+               [--dry-run] [--reason <text>] [--actor <id>] [--timestamp <iso>]
+  lattice lock verify [--deck <id>]
+  lattice lock update [--deck <id>] [--actor <id>] [--reason <text>]
+
+Prompt-driven authoring (M6) — the machine-consumable convergence loop:
+
+  "lattice template scaffold" starts a new deck from a formal template built
+  on a shared runtime Theme (structure only, never business content).
+  "lattice edit" performs one minimal, auditable edit to a deck's canonical
+  content source: stable slide id + field path → exact byte-range replacement,
+  with a provenance record (who/when/input hash/output hash/source map) per
+  applied edit and --dry-run for zero-write preview. On any deck with a
+  stored Content Lock, an edit that would change the frozen fingerprint is
+  rejected before a single byte is written. After an applied edit the loop
+  runs automatically: fresh deck re-import, fingerprint recomputation, and
+  "lattice validate". Every command in the loop is deterministic, JSON-out,
+  and machine-consumable via exit codes (0 ok, 1 refused/failed, 2
+  configuration or infrastructure failure):
+
+    lattice lock update --deck <id>   # freeze content once final
+    lattice edit --deck <id> --slide <id> --field <path> --value <json>
+    lattice lock verify --deck <id>   # prove the freeze still holds
+    lattice validate --deck <id>
 
 Video commands (M3):
   "lattice video plan" compiles an engine-neutral integer-frame VideoPlan
