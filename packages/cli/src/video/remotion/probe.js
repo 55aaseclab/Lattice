@@ -4,16 +4,19 @@ import { ArtifactMetadata, VideoBackendError } from "../backend-contract.js";
 
 const REMOTION_BACKEND_ID = "remotion";
 
-function probeError(message, cause = "probe-failed", diagnostics = []) {
-  return new VideoBackendError(message, { backendId: REMOTION_BACKEND_ID, diagnostics, cause });
+function probeError(message, cause = "probe-failed", diagnostics = [], backendId = REMOTION_BACKEND_ID) {
+  return new VideoBackendError(message, { backendId, diagnostics, cause });
 }
 
-function runFfprobe(ffprobePath, args, { timeoutMs = 30000 } = {}) {
+function runFfprobe(ffprobePath, args, { timeoutMs = 30000, backendId } = {}) {
   return new Promise((resolve, reject) => {
     execFile(ffprobePath, args, { timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         reject(probeError(
           `ffprobe failed for ${args[args.length - 1]}: ${error.message}${stderr ? ` — ${stderr.trim()}` : ""}`,
+          "probe-failed",
+          [],
+          backendId,
         ));
         return;
       }
@@ -47,7 +50,7 @@ function resolveFormatLabel(formatName, codecName) {
   return names[0] ?? codecName ?? null;
 }
 
-async function countFramesByDecoding(ffprobePath, artifactPath) {
+async function countFramesByDecoding(ffprobePath, artifactPath, backendId) {
   const stdout = await runFfprobe(ffprobePath, [
     "-v", "error",
     "-count_frames",
@@ -55,7 +58,7 @@ async function countFramesByDecoding(ffprobePath, artifactPath) {
     "-show_entries", "stream=nb_read_frames",
     "-print_format", "json",
     artifactPath,
-  ]);
+  ], { backendId });
   const parsed = JSON.parse(stdout);
   const stream = parsed?.streams?.[0];
   return parseFrameCount(stream?.nb_read_frames);
@@ -65,9 +68,10 @@ async function countFramesByDecoding(ffprobePath, artifactPath) {
  * Artifact probe: one ffprobe invocation describing a rendered still or video
  * as ArtifactMetadata. Frame counts rely on the container when present and
  * otherwise fall back to a real decode count — never to guesses from bitrate
- * or duration.
+ * or duration. The probe is shared by every backend; `backendId` only labels
+ * the typed errors so diagnostics name the owning adapter.
  */
-export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
+export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath, backendId }) {
   let stat = null;
   try {
     stat = await fsSync.promises.stat(artifactPath);
@@ -75,7 +79,7 @@ export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
     stat = null;
   }
   if (!stat || !stat.isFile()) {
-    throw probeError(`artifact to inspect does not exist or is not a regular file: ${artifactPath}`, "artifact-missing");
+    throw probeError(`artifact to inspect does not exist or is not a regular file: ${artifactPath}`, "artifact-missing", [], backendId);
   }
 
   let stdout;
@@ -86,8 +90,9 @@ export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
       "-show_format",
       "-show_streams",
       artifactPath,
-    ]);
+    ], { backendId });
   } catch (error) {
+    if (error instanceof VideoBackendError && error.backendId === undefined) error.backendId = backendId;
     error.cause = "probe-failed";
     throw error;
   }
@@ -96,7 +101,7 @@ export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
   try {
     parsed = JSON.parse(stdout);
   } catch (error) {
-    throw probeError(`ffprobe produced unparseable output for ${artifactPath}: ${error.message}`);
+    throw probeError(`ffprobe produced unparseable output for ${artifactPath}: ${error.message}`, "probe-failed", [], backendId);
   }
 
   const streams = Array.isArray(parsed?.streams) ? parsed.streams : [];
@@ -104,7 +109,7 @@ export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
     stream?.codec_type === "video" && stream?.disposition?.attached_pic !== 1,
   );
   if (!videoStream) {
-    throw probeError(`no video stream found in ${artifactPath}; ffprobe cannot describe it as a video artifact`);
+    throw probeError(`no video stream found in ${artifactPath}; ffprobe cannot describe it as a video artifact`, "probe-failed", [], backendId);
   }
 
   const fps = parseRational(videoStream.avg_frame_rate) ?? parseRational(videoStream.r_frame_rate);
@@ -117,7 +122,7 @@ export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
     if (isImage) {
       totalFrames = 1;
     } else {
-      totalFrames = await countFramesByDecoding(ffprobePath, artifactPath);
+      totalFrames = await countFramesByDecoding(ffprobePath, artifactPath, backendId);
     }
   }
 
@@ -140,7 +145,7 @@ export async function probeArtifactWithFfprobe({ ffprobePath, artifactPath }) {
  * missing ffprobe is a diagnostic error with install guidance, never a
  * skipped verification.
  */
-export async function resolveFfprobeExecutable() {
+export async function resolveFfprobeExecutable({ backendId } = {}) {
   const { checkCommand } = await import("../diagnostics.js");
   const check = await checkCommand("ffprobe", ["-version"]);
   if (!check.ok) {
@@ -148,6 +153,7 @@ export async function resolveFfprobeExecutable() {
       "ffprobe is required to inspect rendered artifacts but was not found. Install ffmpeg/ffprobe (e.g. apt-get install ffmpeg) or add it to PATH.",
       "missing-ffprobe",
       [],
+      backendId,
     );
   }
   return { ffprobePath: "ffprobe", version: check.version };

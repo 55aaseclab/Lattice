@@ -375,15 +375,16 @@ test("video doctor with unknown backend exits 2", () => {
   }
 });
 
-test("video doctor reports unavailable (exit 2) when required backend packages are missing", () => {
+test("video doctor reports the installed HyperFrames toolchain as available", () => {
   const root = makeProject({});
   try {
     const result = runCli(root, ["video", "doctor", "--backend", "hyperframes"]);
-    // hyperframes is not installed in this repository; doctor must say so
-    // honestly with exit code 2 instead of pretending success.
-    assert.equal(result.status, 2, `expected exit 2, stdout: ${result.stdout}`);
-    assert.ok(result.stdout.includes("unavailable"), `stdout must report unavailable status: ${result.stdout}`);
-    assert.ok(result.stdout.includes("HyperFrames"), "must name the missing package");
+    // HyperFrames is installed at the exact pinned version in this repository;
+    // doctor must report the concrete toolchain instead of a generic success.
+    assert.equal(result.status, 0, `expected exit 0, stdout: ${result.stdout}`);
+    assert.ok(result.stdout.includes("Status: available"), `stdout must report available status: ${result.stdout}`);
+    assert.ok(result.stdout.includes("0.8.206"), `doctor must report the exact installed HyperFrames version: ${result.stdout}`);
+    assert.ok(result.stdout.includes("3.15.0"), `doctor must report the vendored gsap version: ${result.stdout}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

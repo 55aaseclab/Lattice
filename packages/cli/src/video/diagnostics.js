@@ -64,9 +64,9 @@ function resolvePackageRootFromUrl(resolvedUrl, packageName) {
   return resolvePackageRootByManifestName({ entryPath, packageName });
 }
 
-export async function checkNodePackage(packageName, { globalRoot } = {}) {
+export async function checkNodePackage(packageName, { globalRoot, resolveSpecifier } = {}) {
   try {
-    const resolved = import.meta.resolve(packageName);
+    const resolved = import.meta.resolve(resolveSpecifier ?? packageName);
     const pkgDir = resolvePackageRootFromUrl(resolved, packageName);
     if (!pkgDir) {
       return {
@@ -101,8 +101,8 @@ export function isValidPackageVersion(version) {
   return typeof version === "string" && version.length > 0 && version !== "unknown";
 }
 
-export async function getLocalPackageVersion(packageName) {
-  const pkgCheck = await checkNodePackage(packageName);
+export async function getLocalPackageVersion(packageName, options = {}) {
+  const pkgCheck = await checkNodePackage(packageName, options);
   if (!pkgCheck.ok) return { ok: false, packageName, message: pkgCheck.message };
   try {
     const pkgJsonPath = path.join(pkgCheck.pkgDir, "package.json");

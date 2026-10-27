@@ -4,22 +4,37 @@ import { validateVideoPlan, hashVideoPlan, serializeVideoPlan } from "@55aasecla
 import {
   BackendDiagnostic,
   PreparedRender,
+  RenderArtifact,
   VideoBackendError,
 } from "../backend-contract.js";
 import { resolveGeneratedWorkDir } from "../generated-path.js";
 import { validateSlideWebBundle } from "../bundle.js";
+import { generateHyperFramesHost, resolveVendoredGsapSource } from "./host-template.js";
+import { probeArtifactWithFfprobe, resolveFfprobeExecutable } from "../remotion/probe.js";
+import {
+  assertHostClipsBound,
+  captureStillViaSnapshot,
+  readHostManifest,
+  renderVideoViaCli,
+  resolveHyperFramesCliEntry,
+  resolvePinnedBrowserEnv,
+  writeHyperFramesFailureLog,
+} from "./render-support.js";
 import {
   checkCommand,
   getLocalPackageVersion,
   getLocalBinPath,
-  checkCommandVersion,
-  checkBrowserExecutable,
   isValidPackageVersion,
   formatMissingToolDiagnostic,
   formatInstallGuidance,
 } from "../diagnostics.js";
 
 export const HYPERFRAMES_BACKEND_ID = "hyperframes";
+
+// The hyperframes package exposes no "." export main; its package.json is the
+// only resolvable specifier, so package resolution goes through the manifest
+// while diagnostics still key on the real package name.
+const HYPERFRAMES_RESOLVE_SPECIFIER = "hyperframes/package.json";
 
 function asBackendError(error, backendId) {
   if (error instanceof VideoBackendError) {
@@ -46,13 +61,13 @@ export function createHyperFramesBackend({ probe = null } = {}) {
       const { checkNodePackage: cnp } = await import("../diagnostics.js");
       return cnp(pkg);
     },
-    async getLocalPackageVersion(pkg) {
+    async getLocalPackageVersion(pkg, options) {
       const { getLocalPackageVersion: glpv } = await import("../diagnostics.js");
-      return glpv(pkg);
+      return glpv(pkg, options);
     },
-    async getLocalBinPath(pkg, binName) {
+    async getLocalBinPath(pkg, binName, options) {
       const { getLocalBinPath: glbp } = await import("../diagnostics.js");
-      return glbp(pkg, binName);
+      return glbp(pkg, binName, options);
     },
     async checkCommand(cmd, args) {
       const { checkCommand: cc } = await import("../diagnostics.js");
@@ -103,7 +118,7 @@ export function createHyperFramesBackend({ probe = null } = {}) {
         }
       }
 
-      const hyperframesInfo = await probeHost.getLocalPackageVersion("hyperframes");
+      const hyperframesInfo = await probeHost.getLocalPackageVersion("hyperframes", { resolveSpecifier: HYPERFRAMES_RESOLVE_SPECIFIER });
       if (!hyperframesInfo.ok || !isValidPackageVersion(hyperframesInfo.version)) {
         diagnostics.push(new BackendDiagnostic({
           level: "error",
@@ -116,7 +131,7 @@ export function createHyperFramesBackend({ probe = null } = {}) {
           },
         }));
       } else {
-        const binInfo = await probeHost.getLocalBinPath("hyperframes", "hyperframes");
+        const binInfo = await probeHost.getLocalBinPath("hyperframes", "hyperframes", { resolveSpecifier: HYPERFRAMES_RESOLVE_SPECIFIER });
         if (!binInfo.ok) {
           diagnostics.push(new BackendDiagnostic({
             level: "error",
@@ -142,6 +157,33 @@ export function createHyperFramesBackend({ probe = null } = {}) {
             },
           }));
         }
+      }
+
+      // The generated composition drives time through a vendored GSAP runtime
+      // inlined at generation time; doctor reports the actually-installed
+      // version so a render can always be tied to a concrete toolchain.
+      const gsapInfo = await probeHost.getLocalPackageVersion("gsap");
+      if (!gsapInfo.ok || !isValidPackageVersion(gsapInfo.version)) {
+        diagnostics.push(new BackendDiagnostic({
+          level: "error",
+          message: `gsap not found or its version is missing/invalid. Install with: npm install gsap`,
+          details: {
+            package: "gsap",
+            install: "npm install gsap",
+            error: gsapInfo.ok ? `invalid version: ${JSON.stringify(gsapInfo.version ?? null)}` : gsapInfo.message,
+          },
+        }));
+      } else {
+        diagnostics.push(new BackendDiagnostic({
+          level: "info",
+          message: `gsap v${gsapInfo.version} at ${gsapInfo.pkgPath} (inlined into the generated composition)`,
+          details: {
+            package: "gsap",
+            resolved: gsapInfo.resolved,
+            pkgPath: gsapInfo.pkgPath,
+            version: gsapInfo.version,
+          },
+        }));
       }
 
       const ffmpegCheck = await probeHost.checkCommand("ffmpeg", ["-version"]);
@@ -176,16 +218,16 @@ export function createHyperFramesBackend({ probe = null } = {}) {
       } else {
         diagnostics.push(new BackendDiagnostic({
           level: "info",
-          message: `Browser: ${browserCheck.version} at ${browserCheck.executable}`,
+          message: `Browser: ${browserCheck.version} at ${browserCheck.executable} (pinned for render parity with the Remotion backend)`,
           details: { command: "browser", executable: browserCheck.executable, version: browserCheck.version },
         }));
       }
 
       return formatInstallGuidance(diagnostics, {
         node: ">=22 (required by HyperFrames)",
-        requiredPackages: ["hyperframes"],
+        requiredPackages: ["hyperframes", "gsap"],
         requiredTools: ["ffmpeg", "ffprobe", "chromium"],
-        installHyperFrames: "npm install hyperframes",
+        installHyperFrames: "npm install hyperframes@0.8.206 gsap@3.15.0",
         cliUsage: "npx hyperframes",
         installFfmpeg: "apt-get install ffmpeg  /  brew install ffmpeg  /  choco install ffmpeg",
         installBrowser: "npx playwright install chromium  /  apt-get install chromium  /  set LATTICE_CHROMIUM",
@@ -219,6 +261,8 @@ export function createHyperFramesBackend({ probe = null } = {}) {
         throw asBackendError(error, HYPERFRAMES_BACKEND_ID);
       }
 
+      // Consume the bundle identity: a plan whose provenance names a different
+      // bundle must never be prepared against this one.
       if (plan.provenance.bundleHash !== bundleInfo.bundleHash) {
         throw new VideoBackendError(
           `plan provenance.bundleHash (${plan.provenance.bundleHash}) does not match the actual Slide Web Bundle hash (${bundleInfo.bundleHash}) for deck "${plan.deckId}". Re-run "lattice video plan" against this bundle.`,
@@ -244,8 +288,12 @@ export function createHyperFramesBackend({ probe = null } = {}) {
         `route: ${plan.routeId}`,
         `backend: ${HYPERFRAMES_BACKEND_ID}`,
         "---",
-        "HyperFrames adapter foundation (M3). Still and video rendering require",
-        "installed HyperFrames (npm install hyperframes).",
+        "HyperFrames adapter generated master composition (M5). composition/ is a",
+        "generated HyperFrames project built from this VideoPlan and the Slide Web",
+        "Bundle copied to composition/bundle. The composition renders the bundle's",
+        "own slide markup at the plan's integer frames through a GSAP timeline that",
+        "both the render pipeline and snapshot captures seek. Render with:",
+        "lattice video still / lattice video render.",
         "Run: lattice video doctor --backend hyperframes",
         "",
       ];
@@ -263,6 +311,19 @@ export function createHyperFramesBackend({ probe = null } = {}) {
         "utf8",
       );
 
+      // Generated HyperFrames master composition: deterministic regeneration
+      // from (plan, bundle) — safe to re-run before every render.
+      const gsapSource = await resolveVendoredGsapSource();
+      const host = await generateHyperFramesHost({
+        workDir: safeWorkDir,
+        plan,
+        planHash,
+        bundlePath: bundleInfo.bundlePath,
+        bundleHash: bundleInfo.bundleHash,
+        manifest: bundleInfo.manifest,
+        gsapSource,
+      });
+
       const hyperframesProject = {
         schema: "lattice.hyperframes-project.v1",
         planHash,
@@ -271,6 +332,12 @@ export function createHyperFramesBackend({ probe = null } = {}) {
         bundleDir: bundleInfo.bundlePath,
         bundleHash: bundleInfo.bundleHash,
         videoPlanPath: path.join(safeWorkDir, "video-plan.json"),
+        composition: {
+          compositionId: host.hostManifest.compositionId,
+          compositionDir: host.compositionDir,
+          entryPoint: host.entryPoint,
+          manifestPath: host.manifestPath,
+        },
       };
 
       await fs.writeFile(
@@ -288,29 +355,213 @@ export function createHyperFramesBackend({ probe = null } = {}) {
       });
     },
 
-    async renderStill() {
-      throw new VideoBackendError(
-        "HyperFrames still rendering not available at M3. " +
-        "Install hyperframes and check with: " +
-        "lattice video doctor --backend hyperframes",
-        { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "unsupported-render-method" },
-      );
+    async renderStill(input = {}) {
+      const { prepared = null, frame, output } = input;
+
+      if (!prepared || typeof prepared !== "object" || prepared.backendId !== HYPERFRAMES_BACKEND_ID ||
+          typeof prepared.planHash !== "string" || typeof prepared.workDir !== "string") {
+        throw new VideoBackendError(
+          "renderStill requires a PreparedRender produced by this backend's prepare()",
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-prepared" },
+        );
+      }
+      if (!Number.isInteger(frame) || frame < 0) {
+        await writeHyperFramesFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still-invalid-frame",
+          planHash: prepared.planHash,
+          context: { frame: String(frame) },
+          error: new Error(`renderStill requires a non-negative integer frame, got ${String(frame)}`),
+        });
+        throw new VideoBackendError(
+          `renderStill requires a non-negative integer frame, got ${String(frame)}`,
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-frame" },
+        );
+      }
+      if (typeof output !== "string" || output === "") {
+        await writeHyperFramesFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still-invalid-output",
+          planHash: prepared.planHash,
+          context: { frame: String(frame) },
+          error: new Error("renderStill requires a non-empty output path"),
+        });
+        throw new VideoBackendError(
+          "renderStill requires a non-empty output path",
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-output" },
+        );
+      }
+
+      const { manifest } = await readHostManifest({ workDir: prepared.workDir, planHash: prepared.planHash });
+      if (!Number.isInteger(manifest.totalFrames) || frame >= manifest.totalFrames) {
+        await writeHyperFramesFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still-invalid-frame",
+          planHash: prepared.planHash,
+          context: { frame: String(frame), totalFrames: String(manifest.totalFrames) },
+          error: new Error(`frame ${frame} is outside the plan range [0, ${manifest.totalFrames - 1}]`),
+        });
+        throw new VideoBackendError(
+          `frame ${frame} is outside the plan range [0, ${manifest.totalFrames - 1}] (totalFrames ${manifest.totalFrames})`,
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-frame" },
+        );
+      }
+      assertHostClipsBound(manifest);
+
+      const resolvedOutput = path.resolve(output);
+      await fs.mkdir(path.dirname(resolvedOutput), { recursive: true });
+
+      let capturedPath;
+      try {
+        const env = await resolvePinnedBrowserEnv();
+        capturedPath = await captureStillViaSnapshot({
+          compositionDir: path.join(prepared.workDir, "composition"),
+          stillsDir: path.join(prepared.workDir, "stills"),
+          frame,
+          fps: manifest.fps,
+          env,
+        });
+        await fs.copyFile(capturedPath, resolvedOutput);
+      } catch (error) {
+        const failureLog = await writeHyperFramesFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-still",
+          planHash: prepared.planHash,
+          context: { frame: String(frame), output: resolvedOutput },
+          error,
+          diagnostics: error instanceof VideoBackendError ? error.diagnostics : [],
+        });
+        throw new VideoBackendError(
+          `HyperFrames still rendering failed for frame ${frame}: ${error?.message ?? String(error)}` +
+            (failureLog ? ` (failure log: ${failureLog})` : ""),
+          {
+            backendId: HYPERFRAMES_BACKEND_ID,
+            diagnostics: error instanceof VideoBackendError
+              ? error.diagnostics
+              : [new BackendDiagnostic({ level: "error", message: String(error?.stack ?? error) })],
+            cause: error instanceof VideoBackendError && (
+              error.cause === "invalid-frame" || error.cause === "missing-host" || error.cause === "host-mismatch" ||
+              error.cause === "invalid-host" || error.cause === "unbound-slide-content" || error.cause === "missing-browser"
+            ) ? error.cause : "render-failed",
+          },
+        );
+      }
+
+      const { ffprobePath } = await resolveFfprobeExecutable({ backendId: HYPERFRAMES_BACKEND_ID });
+      const metadata = await probeArtifactWithFfprobe({ ffprobePath, artifactPath: resolvedOutput, backendId: HYPERFRAMES_BACKEND_ID });
+      if (metadata.width !== manifest.width || metadata.height !== manifest.height) {
+        throw new VideoBackendError(
+          `rendered still has unexpected dimensions ${metadata.width}x${metadata.height}, expected ${manifest.width}x${manifest.height}: ${resolvedOutput}`,
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "artifact-mismatch" },
+        );
+      }
+
+      return new RenderArtifact({
+        path: resolvedOutput,
+        backendId: HYPERFRAMES_BACKEND_ID,
+        planHash: prepared.planHash,
+        frame,
+        metadata,
+      });
     },
 
-    async renderVideo() {
-      throw new VideoBackendError(
-        "HyperFrames video rendering not available at M3. " +
-        "Install hyperframes and check with: " +
-        "lattice video doctor --backend hyperframes",
-        { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "unsupported-render-method" },
-      );
+    async renderVideo(input = {}) {
+      const { prepared = null, output } = input;
+
+      if (!prepared || typeof prepared !== "object" || prepared.backendId !== HYPERFRAMES_BACKEND_ID ||
+          typeof prepared.planHash !== "string" || typeof prepared.workDir !== "string") {
+        throw new VideoBackendError(
+          "renderVideo requires a PreparedRender produced by this backend's prepare()",
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-prepared" },
+        );
+      }
+      if (typeof output !== "string" || output === "") {
+        throw new VideoBackendError(
+          "renderVideo requires a non-empty output path",
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-output" },
+        );
+      }
+
+      const { manifest } = await readHostManifest({ workDir: prepared.workDir, planHash: prepared.planHash });
+      assertHostClipsBound(manifest);
+
+      const resolvedOutput = path.resolve(output);
+      await fs.mkdir(path.dirname(resolvedOutput), { recursive: true });
+
+      try {
+        const env = await resolvePinnedBrowserEnv();
+        await renderVideoViaCli({
+          compositionDir: path.join(prepared.workDir, "composition"),
+          fps: manifest.fps,
+          output: resolvedOutput,
+          env,
+        });
+      } catch (error) {
+        const failureLog = await writeHyperFramesFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-video",
+          planHash: prepared.planHash,
+          context: { output: resolvedOutput },
+          error,
+          diagnostics: error instanceof VideoBackendError ? error.diagnostics : [],
+        });
+        throw new VideoBackendError(
+          `HyperFrames video rendering failed: ${error?.message ?? String(error)}` +
+            (failureLog ? ` (failure log: ${failureLog})` : ""),
+          {
+            backendId: HYPERFRAMES_BACKEND_ID,
+            diagnostics: error instanceof VideoBackendError
+              ? error.diagnostics
+              : [new BackendDiagnostic({ level: "error", message: String(error?.stack ?? error) })],
+            cause: error instanceof VideoBackendError && (
+              error.cause === "missing-host" || error.cause === "host-mismatch" ||
+              error.cause === "invalid-host" || error.cause === "unbound-slide-content" || error.cause === "missing-browser"
+            ) ? error.cause : "render-failed",
+          },
+        );
+      }
+
+      const { ffprobePath } = await resolveFfprobeExecutable({ backendId: HYPERFRAMES_BACKEND_ID });
+      const metadata = await probeArtifactWithFfprobe({ ffprobePath, artifactPath: resolvedOutput, backendId: HYPERFRAMES_BACKEND_ID });
+      const mismatches = [];
+      if (metadata.width !== manifest.width) mismatches.push(`width ${metadata.width} != ${manifest.width}`);
+      if (metadata.height !== manifest.height) mismatches.push(`height ${metadata.height} != ${manifest.height}`);
+      if (metadata.fps !== manifest.fps) mismatches.push(`fps ${metadata.fps} != ${manifest.fps}`);
+      if (metadata.totalFrames !== manifest.totalFrames) mismatches.push(`totalFrames ${metadata.totalFrames} != ${manifest.totalFrames}`);
+      if (mismatches.length > 0) {
+        const failureLog = await writeHyperFramesFailureLog({
+          workDir: prepared.workDir,
+          kind: "render-video-probe",
+          planHash: prepared.planHash,
+          context: { output: resolvedOutput, mismatches: mismatches.join("; ") },
+          error: new Error(`rendered MP4 failed ffprobe verification: ${mismatches.join("; ")}`),
+          diagnostics: [],
+        });
+        throw new VideoBackendError(
+          `rendered MP4 failed ffprobe verification: ${mismatches.join("; ")}` +
+            (failureLog ? ` (failure log: ${failureLog})` : ""),
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "artifact-mismatch" },
+        );
+      }
+
+      return new RenderArtifact({
+        path: resolvedOutput,
+        backendId: HYPERFRAMES_BACKEND_ID,
+        planHash: prepared.planHash,
+        frame: null,
+        metadata,
+      });
     },
 
-    async inspectArtifact() {
-      throw new VideoBackendError(
-        "Artifact inspection requires ffprobe. Check with: lattice video doctor --backend hyperframes",
-        { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "unsupported-render-method" },
-      );
+    async inspectArtifact(artifactPath) {
+      if (typeof artifactPath !== "string" || artifactPath === "") {
+        throw new VideoBackendError(
+          "inspectArtifact requires a non-empty artifact path",
+          { backendId: HYPERFRAMES_BACKEND_ID, diagnostics: [], cause: "invalid-artifact-path" },
+        );
+      }
+      const { ffprobePath } = await resolveFfprobeExecutable({ backendId: HYPERFRAMES_BACKEND_ID });
+      return probeArtifactWithFfprobe({ ffprobePath, artifactPath: path.resolve(artifactPath), backendId: HYPERFRAMES_BACKEND_ID });
     },
   };
 }

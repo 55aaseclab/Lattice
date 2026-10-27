@@ -916,14 +916,14 @@ test("remotion renderStill without a prepared render is a typed invalid-prepared
   }
 });
 
-test("renderVideo throws VideoBackendError with cause unsupported-render-method", async () => {
+test("hyperframes renderVideo without a prepared render is a typed invalid-prepared error (M5: real rendering)", async () => {
   const backend = getBackend("hyperframes");
   try {
     await backend.renderVideo();
     assert.fail("should have thrown");
   } catch (error) {
     assert.equal(error.name, "VideoBackendError");
-    assert.equal(error.cause, "unsupported-render-method");
+    assert.equal(error.cause, "invalid-prepared");
   }
 });
 
