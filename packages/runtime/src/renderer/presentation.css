@@ -2,6 +2,13 @@
  * Lattice Presentation (M2) browser surface styles.
  * Imported explicitly by the hosting page (kept out of presentation-app.js so
  * the surface module stays importable in plain Node).
+ *
+ * M8 ground note (tradeoff, kept as-is): the audience canvas below is the
+ * deck ground and stays pure #FFFFFF, matching the M8 white default palette.
+ * The dark root background and the black fullscreen stage background are the
+ * presentation environment (letterbox/chrome around the 16:9 canvas), not the
+ * deck canvas — they frame the projected slide the way a projector letterbox
+ * does and are intentionally untouched by the palette system.
  */
 
 .lattice-presentation {
@@ -177,4 +184,16 @@
 
 .lattice-presentation[data-lattice-fullscreen-active="true"] .lattice-presentation-stage {
   background: #000000;
+}
+
+/*
+ * M8 audience projection (presenter role view): while the projection is
+ * active the presenter chrome steps out of the way so the audience sees only
+ * the deck canvas. The elements stay in the DOM — notes content and state
+ * survive untouched — and any one-action return (Esc, stage click/tap, the
+ * projection toggle) restores them.
+ */
+.lattice-presentation[data-lattice-audience-projection="true"] .lattice-presentation-hud,
+.lattice-presentation[data-lattice-audience-projection="true"] .lattice-presentation-notes {
+  display: none;
 }

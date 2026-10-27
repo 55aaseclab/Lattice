@@ -150,7 +150,7 @@ export async function renderPresentationApp(container, deckDescriptor, options =
   const initial = freezeAddressState(parsed.address);
 
   container.innerHTML = `
-    <div class="lattice-presentation" data-lattice-presentation data-lattice-presentation-deck="${escapeHtml(model.deckId)}" role="application" aria-roledescription="presentation" aria-label="${escapeHtml(model.title)}" data-lattice-presentation-ready="false" data-lattice-presenter="${presenter ? "true" : "false"}">
+    <div class="lattice-presentation" data-lattice-presentation data-lattice-presentation-deck="${escapeHtml(model.deckId)}" role="application" aria-roledescription="presentation" aria-label="${escapeHtml(model.title)}" data-lattice-presentation-ready="false" data-lattice-presenter="${presenter ? "true" : "false"}" data-lattice-audience-projection="false">
       <div class="lattice-presentation-stage" data-lattice-stage>
         <div class="lattice-presentation-canvas" data-lattice-canvas></div>
       </div>
@@ -163,6 +163,7 @@ export async function renderPresentationApp(container, deckDescriptor, options =
           <ul data-lattice-route-list role="menu" aria-label="Deck routes"></ul>
         </details>
         <button type="button" class="lattice-presentation-button" data-lattice-branch-return aria-label="Return to parent route" hidden>↩ Back</button>
+        ${presenter ? `<button type="button" class="lattice-presentation-button" data-lattice-audience-button aria-label="Project audience view" aria-pressed="false" title="Project the audience canvas fullscreen (M8)">▣</button>` : ""}
         <button type="button" class="lattice-presentation-button" data-lattice-fullscreen aria-label="Toggle fullscreen" aria-pressed="false" title="Fullscreen (F)">⛶</button>
       </div>
       <p class="lattice-visually-hidden" data-lattice-live aria-live="polite" aria-atomic="true"></p>
@@ -178,6 +179,7 @@ export async function renderPresentationApp(container, deckDescriptor, options =
   const routesDetails = root.querySelector("[data-lattice-routes]");
   const branchReturnButton = root.querySelector("[data-lattice-branch-return]");
   const fullscreenButton = root.querySelector("[data-lattice-fullscreen]");
+  const audienceProjectionButton = root.querySelector("[data-lattice-audience-button]");
   const notesBody = root.querySelector("[data-lattice-notes-body]");
   const previousButton = root.querySelector('[data-lattice-nav="previous"]');
   const nextButton = root.querySelector('[data-lattice-nav="next"]');
@@ -443,6 +445,16 @@ export async function renderPresentationApp(container, deckDescriptor, options =
         event.preventDefault();
         void toggleFullscreen();
         return;
+      case "Escape":
+        // M8: one-key return from the audience projection. In true fullscreen
+        // the browser consumes Esc itself and the fullscreenchange handler
+        // flips the role view; this branch covers the viewport-filling
+        // fallback. Outside the projection Escape stays inert (M2 unchanged).
+        if (audienceProjectionActive()) {
+          event.preventDefault();
+          void exitAudienceProjection();
+        }
+        return;
       default:
         return;
     }
@@ -457,6 +469,10 @@ export async function renderPresentationApp(container, deckDescriptor, options =
   // ignored entirely.
 
   let swipe = null;
+  // M8: set when a touch swipe actually navigates, so the click event that
+  // some browsers synthesize after a gesture cannot be misread as the
+  // one-click "return to presenter view" action in audience projection.
+  let swipeCommitted = false;
 
   function swipeDelta(event) {
     return { dx: event.clientX - swipe.startX, dy: event.clientY - swipe.startY };
@@ -465,6 +481,7 @@ export async function renderPresentationApp(container, deckDescriptor, options =
   function commitSwipe(dx, dy) {
     if (Math.abs(dx) >= TOUCH_SWIPE_THRESHOLD_PX && Math.abs(dx) > Math.abs(dy)) {
       swipe = null;
+      swipeCommitted = true;
       if (dx < 0) void next();
       else void previous();
       return true;
@@ -475,6 +492,7 @@ export async function renderPresentationApp(container, deckDescriptor, options =
   function onPointerDown(event) {
     if (destroyed || event.pointerType !== "touch" || !event.isPrimary) return;
     if (event.target?.closest?.(INTERACTIVE_SELECTOR)) return;
+    swipeCommitted = false;
     swipe = { startX: event.clientX, startY: event.clientY, pointerId: event.pointerId };
   }
 
@@ -500,6 +518,19 @@ export async function renderPresentationApp(container, deckDescriptor, options =
     swipe = null;
   }
 
+  // M8 one-click return: while the audience projection is active the whole
+  // stage is the return control. Outside the projection a stage click is
+  // inert, so M2 click/touch semantics stay untouched.
+  function onStageClick(event) {
+    if (destroyed || !audienceProjectionActive()) return;
+    if (swipeCommitted) {
+      swipeCommitted = false;
+      return;
+    }
+    if (event.target?.closest?.(INTERACTIVE_SELECTOR)) return;
+    void exitAudienceProjection();
+  }
+
   // ---- Fullscreen (A19) ----
 
   async function toggleFullscreen() {
@@ -523,7 +554,67 @@ export async function renderPresentationApp(container, deckDescriptor, options =
     fullscreenButton.setAttribute("aria-pressed", String(active));
     fullscreenButton.setAttribute("aria-label", active ? "Exit fullscreen" : "Toggle fullscreen");
     root.setAttribute("data-lattice-fullscreen-active", active ? "true" : "false");
+    // M8: the native Esc exit is the presenter's one-key return — leaving
+    // fullscreen always also leaves audience projection, restoring the
+    // presenter role view (notes + controls).
+    if (!active && audienceProjectionActive()) setAudienceProjection(false);
     fitCanvas();
+  }
+
+  // ---- Audience projection (M8, presenter role view) ----
+  //
+  // The presenter flips their running presentation into the audience role
+  // view with one click: the deck canvas fills the screen as a pure
+  // projection (HUD + notes hidden) while the state machine keeps running —
+  // keyboard navigation, live region and URL state are untouched, so next/
+  // previous keep working during the projection. Returning is one action:
+  // Esc (native fullscreen exit), a click/tap on the projected stage, or the
+  // projection toggle. This is the "in-place fullscreen stage" option of the
+  // M8 contract; a synced second window would duplicate the state machine
+  // and was deliberately not taken. When the Fullscreen API is unavailable
+  // (some headless engines), the projection degrades to the viewport-filling
+  // fixed root — the audience-projection attribute still applies.
+
+  function audienceProjectionActive() {
+    return root.getAttribute("data-lattice-audience-projection") === "true";
+  }
+
+  function setAudienceProjection(active, { announce = true } = {}) {
+    root.setAttribute("data-lattice-audience-projection", active ? "true" : "false");
+    if (audienceProjectionButton) {
+      audienceProjectionButton.setAttribute("aria-pressed", String(active));
+      audienceProjectionButton.setAttribute("aria-label", active ? "Return to presenter view" : "Project audience view");
+    }
+    if (announce) {
+      liveRegion.textContent = active
+        ? "Audience projection on. Press Escape or click the slide to return to presenter view."
+        : "Returned to presenter view.";
+    }
+  }
+
+  async function toggleAudienceProjection() {
+    const nextActive = !audienceProjectionActive();
+    setAudienceProjection(nextActive);
+    try {
+      if (nextActive && document.fullscreenElement !== root) await root.requestFullscreen();
+      if (!nextActive && document.fullscreenElement === root) await document.exitFullscreen();
+      fullscreenError = null;
+    } catch (error) {
+      // The projection itself stays active (viewport-filling fallback); the
+      // fullscreen failure is recorded through the existing M2 channel.
+      fullscreenError = String(error?.message ?? error);
+      root.setAttribute("data-lattice-fullscreen-error", fullscreenError);
+    }
+  }
+
+  async function exitAudienceProjection() {
+    if (!audienceProjectionActive()) return;
+    setAudienceProjection(false);
+    try {
+      if (document.fullscreenElement === root) await document.exitFullscreen();
+    } catch {
+      // Fullscreen may already be gone; the role view flip above is what matters.
+    }
   }
 
   // ---- Canvas fit ----
@@ -548,6 +639,8 @@ export async function renderPresentationApp(container, deckDescriptor, options =
   nextButton.addEventListener("click", () => void next());
   branchReturnButton.addEventListener("click", () => void exitBranch());
   fullscreenButton.addEventListener("click", () => void toggleFullscreen());
+  audienceProjectionButton?.addEventListener("click", () => void toggleAudienceProjection());
+  stage.addEventListener("click", onStageClick);
   document.addEventListener("keydown", onKeyDown);
   document.addEventListener("fullscreenchange", onFullscreenChange);
   window.addEventListener("resize", onResize);
@@ -613,6 +706,9 @@ export async function renderPresentationApp(container, deckDescriptor, options =
     exitBranch,
     settle,
     toggleFullscreen,
+    toggleAudienceProjection,
+    audienceProjectionActive,
+    exitAudienceProjection,
     fitCanvas,
     focusInteractive(selector) {
       const element = container.querySelector(selector);
@@ -630,6 +726,7 @@ export async function renderPresentationApp(container, deckDescriptor, options =
       stage.removeEventListener("pointermove", onPointerMove);
       stage.removeEventListener("pointerup", onPointerUp);
       stage.removeEventListener("pointercancel", onPointerCancel);
+      stage.removeEventListener("click", onStageClick);
       runtime?.destroy();
       runtime = null;
       container.innerHTML = "";

@@ -6,8 +6,13 @@ export const palettes = [
     id: "ivory-pine",
     name: "Ivory & Pine",
     swatches: ["#253746", "#2F6B55", "#C46B35", "#E7F0E8"],
+    // M8: the default canvas ground is deck identity and the product position
+    // is Google-Slides-style white paper, so ivory-pine — the palette that
+    // ships as `defaultPalette` (palettes[0], consumed by bootDeckPortal,
+    // bootStaticDeck and the static export entry) — carries pure #FFFFFF.
+    // Every other palette keeps its tinted canvas by design.
     tokens: {
-      canvas: "#FFFCF6", ink: "#253746", body: "#52616B", muted: "#7A8586", line: "#D9E2DE",
+      canvas: "#FFFFFF", ink: "#253746", body: "#52616B", muted: "#7A8586", line: "#D9E2DE",
       labelSurface: "#E7F0E8", mutedSurface: "#EEF4EF", softSurface: "#D7E7DC",
       roadmap: "#2F6B55", onDark: "#FFFFFF", accent: "#C46B35", accentSoft: "#F3DDCB", accentAlt: "#5F8D7A",
       timelineBase: "#91A79D", timelineResearch: "#2F6B55", timelineMentoring: "#5F8D7A",

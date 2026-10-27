@@ -486,3 +486,152 @@ test("A19: fullscreen toggles on the presentation stage with correct button stat
     }
   });
 });
+
+// ---- M8: presenter role view — one-click audience projection. ----
+//
+// The presenter flips the running presentation into the audience role view:
+// the deck canvas projects fullscreen while the presenter state machine keeps
+// running (keyboard navigation, live region, URL). Returning is one action:
+// Esc, a click/tap on the projected stage, or the toggle. Non-presenter
+// pages never render the control, so the audience role view is unchanged.
+
+test("M8: only the presenter page renders the audience projection control", async () => {
+  await withPresentationPage(async (page) => {
+    await readyHook(page);
+    const audience = await page.evaluate(() => ({
+      button: document.querySelector("[data-lattice-audience-button]") !== null,
+      attr: document.querySelector("[data-lattice-presentation]").getAttribute("data-lattice-audience-projection"),
+    }));
+    assert.equal(audience.button, false, "the audience page must not render the projection control");
+    assert.equal(audience.attr, "false");
+  });
+
+  await withPresentationPage(
+    async (page) => {
+      await readyHook(page);
+      const presenter = await page.evaluate(() => {
+        const button = document.querySelector("[data-lattice-audience-button]");
+        return {
+          button: button !== null,
+          label: button?.getAttribute("aria-label"),
+          pressed: button?.getAttribute("aria-pressed"),
+          attr: document.querySelector("[data-lattice-presentation]").getAttribute("data-lattice-audience-projection"),
+        };
+      });
+      assert.equal(presenter.button, true, "presenter mode renders the projection control");
+      assert.equal(presenter.label, "Project audience view");
+      assert.equal(presenter.pressed, "false");
+      assert.equal(presenter.attr, "false");
+    },
+    { presenter: true },
+  );
+});
+
+test("M8: projection hides presenter chrome while the deck keeps running; one click returns", async () => {
+  await withPresentationPage(
+    async (page) => {
+      await readyHook(page);
+      await page.click("[data-lattice-audience-button]");
+      await page.waitForFunction(() => window.__latticePresentation.audienceProjectionActive() === true, undefined, { timeout: 5000 });
+      const projected = await page.evaluate(() => {
+        const hud = document.querySelector("[data-lattice-hud]");
+        const notes = document.querySelector("[data-lattice-notes]");
+        return {
+          hudDisplay: getComputedStyle(hud).display,
+          notesDisplay: notes ? getComputedStyle(notes).display : null,
+          pressed: document.querySelector("[data-lattice-audience-button]").getAttribute("aria-pressed"),
+          live: window.__latticePresentation.liveRegionText(),
+          address: window.__latticePresentation.address(),
+          fullscreenError: window.__latticePresentation.fullscreenError(),
+        };
+      });
+      assert.equal(projected.hudDisplay, "none", "the HUD steps out of the audience projection");
+      assert.equal(projected.notesDisplay, "none", "notes step out of the audience projection");
+      assert.equal(projected.pressed, "true");
+      assert.match(projected.live, /Audience projection on/);
+      // Fullscreen may be unavailable on some headless engines; the
+      // projection degrades to the viewport-filling root either way.
+      const fullscreenOk = await page.evaluate(() => document.fullscreenElement?.matches("[data-lattice-presentation]") ?? false);
+      if (!fullscreenOk) assert.notEqual(projected.fullscreenError, null, "unsupported fullscreen must be recorded, not silently ignored");
+
+      // The state machine keeps running during the projection.
+      await page.keyboard.press("ArrowRight");
+      await page.waitForFunction(() => window.__latticePresentation.address().slideId === "timeline", undefined, { timeout: 5000 });
+      assert.equal(await page.evaluate(() => window.__latticePresentation.audienceProjectionActive()), true, "navigation does not end the projection");
+
+      // One click on the projected stage returns to the presenter view with
+      // the exact address preserved.
+      await page.click("[data-lattice-stage]");
+      await page.waitForFunction(() => window.__latticePresentation.audienceProjectionActive() === false, undefined, { timeout: 5000 });
+      const restored = await page.evaluate(() => ({
+        address: window.__latticePresentation.address(),
+        hudDisplay: getComputedStyle(document.querySelector("[data-lattice-hud]")).display,
+        notesDisplay: getComputedStyle(document.querySelector("[data-lattice-notes]")).display,
+        notesText: window.__latticePresentation.presenterNotesText(),
+        pressed: document.querySelector("[data-lattice-audience-button]").getAttribute("aria-pressed"),
+        live: window.__latticePresentation.liveRegionText(),
+      }));
+      assert.equal(restored.address.slideId, "timeline");
+      assert.equal(restored.hudDisplay, "flex", "the HUD returns with the presenter view");
+      assert.equal(restored.notesDisplay, "block", "notes return with the presenter view");
+      assert.match(restored.notesText, /Presenter note for the timeline slide\./);
+      assert.equal(restored.pressed, "false");
+      assert.match(restored.live, /Returned to presenter view/);
+    },
+    { presenter: true },
+  );
+});
+
+test("M8: Escape ends the projection and the toggle re-enters it", async () => {
+  await withPresentationPage(
+    async (page) => {
+      await readyHook(page);
+      await page.click("[data-lattice-audience-button]");
+      await page.waitForFunction(() => window.__latticePresentation.audienceProjectionActive() === true, undefined, { timeout: 5000 });
+      const fullscreenSupported = await page.evaluate(() => document.fullscreenElement?.matches("[data-lattice-presentation]") ?? false);
+
+      // Esc is the one-key return in both modes: natively consumed by the
+      // fullscreen exit when true fullscreen is active, handled by the
+      // presentation key handler in the viewport-filling fallback.
+      await page.keyboard.press("Escape");
+      await page.waitForFunction(() => window.__latticePresentation.audienceProjectionActive() === false, undefined, { timeout: 5000 });
+      assert.equal(
+        await page.evaluate(() => document.querySelector("[data-lattice-presentation]").getAttribute("data-lattice-audience-projection")),
+        "false",
+      );
+      if (fullscreenSupported) {
+        assert.equal(await page.evaluate(() => document.fullscreenElement === null), true, "Esc also left true fullscreen");
+      }
+
+      // The toggle itself is the second one-click path back in and out.
+      await page.evaluate(() => window.__latticePresentation.toggleAudienceProjection());
+      await page.waitForFunction(() => window.__latticePresentation.audienceProjectionActive() === true, undefined, { timeout: 5000 });
+      await page.evaluate(() => window.__latticePresentation.exitAudienceProjection());
+      await page.waitForFunction(() => window.__latticePresentation.audienceProjectionActive() === false, undefined, { timeout: 5000 });
+      const final = await page.evaluate(() => ({
+        fullscreenElement: document.fullscreenElement ? document.fullscreenElement.matches("[data-lattice-presentation]") : false,
+        address: window.__latticePresentation.address(),
+        notesDisplay: getComputedStyle(document.querySelector("[data-lattice-notes]")).display,
+      }));
+      assert.equal(final.fullscreenElement, false, "exiting the projection also exits fullscreen");
+      assert.equal(final.address.slideId, "intro", "the presentation state is untouched by the role-view flips");
+      assert.equal(final.notesDisplay, "block");
+    },
+    { presenter: true },
+  );
+});
+
+test("M8: a stage click outside the projection stays inert (M2 semantics unchanged)", async () => {
+  await withPresentationPage(async (page) => {
+    await readyHook(page);
+    const before = await page.evaluate(() => window.__latticePresentation.address());
+    await page.click("[data-lattice-stage]");
+    await page.waitForTimeout(150);
+    const after = await page.evaluate(() => ({
+      address: window.__latticePresentation.address(),
+      projection: window.__latticePresentation.audienceProjectionActive(),
+    }));
+    assert.deepEqual(after.address, before, "stage clicks must not navigate");
+    assert.equal(after.projection, false, "stage clicks must not toggle the projection");
+  });
+});

@@ -29,6 +29,15 @@ test("simple-light exposes the generic palette contract", () => {
   assert.ok(palettes.every(({ id, tokens }) => id && tokens?.canvas && tokens?.ink));
 });
 
+test("M8: the default palette canvas ground is pure white", () => {
+  const defaultTheme = palettes.find(({ id }) => id === defaultPalette);
+  assert.equal(defaultTheme.id, "ivory-pine");
+  assert.equal(defaultTheme.tokens.canvas.toLowerCase(), "#ffffff");
+  // Only the default palette changes; the other palettes keep their own
+  // tinted canvas identity.
+  assert.ok(palettes.slice(1).some(({ tokens }) => tokens.canvas.toLowerCase() !== "#ffffff"));
+});
+
 test("applyThemeTokens writes semantic custom properties without deck-specific naming", () => {
   const properties = new Map();
   const root = {
