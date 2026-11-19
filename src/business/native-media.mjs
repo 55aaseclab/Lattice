@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { materializeNativeWorkspace } from '@55aaseclab/lattice-cli/authoring';
-import { validateAudienceReview } from '@55aaseclab/lattice-cli/authoring/media';
+import { validateAudienceReview, assertVideoBackendAvailable } from '@55aaseclab/lattice-cli/authoring/media';
 import { inputs } from './schema.mjs';
 
 const appRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -101,6 +101,7 @@ async function collectArtifacts(directory, root, artifacts, { exclude = [], acce
 export async function runNativeTask({ kind, document, options, assets = [], context = {}, signal }) {
   const parsed = inputs[kind]?.safeParse(options);
   if (!parsed?.success || !['validate', 'budget', 'lint', 'prepare_audio', 'render_video', 'review'].includes(kind)) throw failure('INVALID_INPUT');
+  if (kind === 'render_video' && ['still', 'render'].includes(parsed.data.operation)) await assertVideoBackendAvailable(parsed.data.backend);
   options = parsed.data;
   const root = await mkdtemp(join(tmpdir(), 'lattice-native-job-'));
   const cleanup = () => rm(root, { recursive: true, force: true });

@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { inputs, DOCUMENT_WRITES, KEYED_OPERATIONS, SNAPSHOT_OPERATIONS } from './schema.mjs';
 import * as Native from '@55aaseclab/lattice-cli/authoring';
-import { getNativeMediaCatalog } from '@55aaseclab/lattice-cli/authoring/media';
+import { getNativeMediaCatalog, assertVideoBackendAvailable } from '@55aaseclab/lattice-cli/authoring/media';
 import { createUpload, writeUploadChunk, finishUpload } from './uploads.mjs';
 import { createContentLockRecord } from '@55aaseclab/lattice-runtime/content-lock';
 
@@ -28,6 +28,11 @@ function parse(operation, input) {
 }
 function paginate(items, input) { const offset = Number(input.cursor || 0), limit = input.limit || 20; return { items: items.slice(offset, offset + limit), ...(offset + limit < items.length ? { nextCursor: String(offset + limit) } : {}) }; }
 const isNative = document => document?.schema === 'lattice.business.native.v1';
+const needsVideoBackend = (kind, options) => kind === 'render_video' && ['still', 'render'].includes(options?.operation ?? 'render');
+const checkVideoBackend = async (kind, options) => {
+  if (needsVideoBackend(kind, options)) await assertVideoBackendAvailable(options?.backend || 'remotion');
+};
+
 const slidesOf = document => isNative(document) ? document.content.slides : document.slides || [];
 const slideIds = document => slidesOf(document).map(slide => slide.id);
 function requireNative(document) { if (!isNative(document)) fail(409, 'UNSUPPORTED_DOCUMENT_MODEL', 'This earlier document remains readable; native authoring requires a native template document.'); }
@@ -67,8 +72,20 @@ export class SlidesStore {
   async readBlob(digest) { if (!/^[a-f0-9]{64}$/.test(digest)) fail(500, 'INVALID_ARTIFACT'); const buffer = await readFile(join(this.blobs, digest)); if (hash(buffer) !== digest) fail(500, 'ARTIFACT_CORRUPT'); return buffer; }
   async recover() {
     let state = await this.read();
-    if (Object.values(state.jobs).some(job => ['running', 'cancelling'].includes(job.status))) {
-      await this.transaction(state => { for (const job of Object.values(state.jobs)) if (['running', 'cancelling'].includes(job.status)) { job.status = 'interrupted'; job.error = { code: 'PROCESS_INTERRUPTED' }; } });
+    const unavailable = new Set();
+    for (const job of Object.values(state.jobs)) {
+      if (['queued', 'running', 'cancelling'].includes(job.status) && needsVideoBackend(job.kind, job.options)) {
+        try { await checkVideoBackend(job.kind, job.options); }
+        catch { unavailable.add(job.id); }
+      }
+    }
+    if (unavailable.size || Object.values(state.jobs).some(job => ['running', 'cancelling'].includes(job.status))) {
+      await this.transaction(state => {
+        for (const job of Object.values(state.jobs)) {
+          if (unavailable.has(job.id)) { job.status = 'interrupted'; job.error = { code: 'VIDEO_BACKEND_UNAVAILABLE', retryable: true }; }
+          else if (['running', 'cancelling'].includes(job.status)) { job.status = 'interrupted'; job.error = { code: 'PROCESS_INTERRUPTED' }; }
+        }
+      });
       state = await this.read();
     }
     for (const job of Object.values(state.jobs)) if (job.status === 'queued') queueMicrotask(() => this.runJob(job.id).catch(() => {}));
@@ -95,9 +112,9 @@ export class SlidesStore {
         else if (operation === 'create_upload') { const document = documentAt(state,request); requireNative(document); assertRevision(document,request.expectedRevision); response = await createUpload(state,request,claims,this); }
         else if (operation === 'write_upload_chunk') response = await writeUploadChunk(state,request,claims,this);
         else if (operation === 'finish_upload') response = await finishUpload(state,request,claims,this);
-        else if (SNAPSHOT_OPERATIONS.has(operation)) { response = this.createJob(state, request, claims); jobId = response.jobId; }
+        else if (SNAPSHOT_OPERATIONS.has(operation)) { response = await this.createJob(state, request, claims); jobId = response.jobId; }
         else if (operation === 'cancel_job') response = this.cancelJob(state, request, claims);
-        else if (operation === 'retry_job') { response = this.retryJob(state, request, claims); jobId = response.jobId; }
+        else if (operation === 'retry_job') { response = await this.retryJob(state, request, claims); jobId = response.jobId; }
         state.receipts[receiptKey] = { hash: requestHash, result: response }; return { ...response, replayed: false };
       });
       if (jobId) queueMicrotask(() => this.runJob(jobId).catch(() => {}));
@@ -188,7 +205,7 @@ export class SlidesStore {
   assetView(asset) { return { id: asset.id, mimeType: asset.mimeType, byteLength: asset.byteLength, sha256: asset.sha256, rights: asset.rights, sourceLabel: asset.sourceLabel, ...(asset.nativePath ? { nativePath: asset.nativePath } : {}), ...(asset.notesSensitive ? { notesSensitive: true } : {}) }; }
   job(state, request, claims) { const job = state.jobs[request.input.jobId]; if (!job || job.deckId !== request.resourceId) fail(404, 'NOT_FOUND'); requireActions(claims, job.requiredActions); return job; }
   jobView(job) { return { resourceId: job.deckId, revision: job.document.revision, jobId: job.id, kind: job.kind, status: job.status, createdAt: job.createdAt, attempt: job.attempt, ...(job.parentJobId ? { parentJobId: job.parentJobId } : {}), ...(job.artifacts ? { artifacts: job.artifacts } : {}), ...(job.issues ? { issues: job.issues } : {}), ...(job.asset ? { asset: job.asset } : {}), ...(job.report ? { report: job.report } : {}), ...(job.error ? { error: job.error } : {}) }; }
-  createJob(state, request, claims) {
+  async createJob(state, request, claims) {
     const document = documentAt(state, request); assertRevision(document, request.expectedRevision);
     if (document.archived) fail(409, 'DECK_ARCHIVED');
     if (request.input.sourceAssetId && !document.assets.some(asset=>asset.id===request.input.sourceAssetId && asset.mimeType.startsWith('audio/'))) fail(404,'NOT_FOUND');
@@ -202,12 +219,13 @@ export class SlidesStore {
     const needsNotes = request.input.includeNotes || request.operation === 'prepare_audio' && request.input.kind === 'narration' || ['review','budget'].includes(request.operation) || sensitiveAudio || request.operation === 'render_video' && request.input.operation === 'subtitles';
     if (needsNotes) requiredActions.push('notes'); requireActions(claims, requiredActions);
     if (request.operation !== 'import_asset' && !this.renderer) fail(503,'RENDERER_UNAVAILABLE');
+    await checkVideoBackend(request.operation, request.input);
     if (Object.values(state.jobs).filter(j => ['queued', 'running'].includes(j.status)).length >= 16 || Object.values(state.jobs).filter(j => ['queued', 'running'].includes(j.status) && j.userId === claims.userId).length >= 8) fail(429, 'JOB_QUOTA');
     const id = randomUUID(); const job = { id, spaceId: claims.spaceId, deckId: document.deckId, document: viewDocument(document, Boolean(needsNotes)), options: clone(request.input), kind: request.operation, status: 'queued', requiredActions: [...new Set(requiredActions)], userId: claims.userId, clientId: claims.clientId, grantId: claims.grantId, authorizationExpiresAt: claims.authorizationExpiresAt || claims.expiresAt, firstPartyNative: claims.firstPartyNative === true, createdAt: new Date(this.now()).toISOString(), attempt: 1 };
     state.jobs[id] = job; return this.jobView(job);
   }
   cancelJob(state, request, claims) { const job = this.job(state, request, claims); if (job.userId !== claims.userId && !grants(claims).has('manage_lock')) fail(403, 'FORBIDDEN'); if (['queued', 'running', 'cancelling'].includes(job.status)) { job.status = job.status === 'queued' ? 'cancelled' : 'cancelling'; this.running.get(job.id)?.abort(); } return this.jobView(job); }
-  retryJob(state, request, claims) { const original = this.job(state, request, claims); if (!['failed', 'interrupted'].includes(original.status)) fail(409, 'JOB_NOT_RETRYABLE'); const id = randomUUID(), job = { ...clone(original), id, status: 'queued', parentJobId: original.id, attempt: original.attempt + 1, userId: claims.userId, clientId: claims.clientId, grantId: claims.grantId, authorizationExpiresAt: claims.authorizationExpiresAt || claims.expiresAt, firstPartyNative: claims.firstPartyNative === true, createdAt: new Date(this.now()).toISOString() }; delete job.error; delete job.artifacts; delete job.issues; state.jobs[id] = job; return this.jobView(job); }
+  async retryJob(state, request, claims) { const original = this.job(state, request, claims); if (!['failed', 'interrupted'].includes(original.status)) fail(409, 'JOB_NOT_RETRYABLE'); await checkVideoBackend(original.kind, original.options); const id = randomUUID(), job = { ...clone(original), id, status: 'queued', parentJobId: original.id, attempt: original.attempt + 1, userId: claims.userId, clientId: claims.clientId, grantId: claims.grantId, authorizationExpiresAt: claims.authorizationExpiresAt || claims.expiresAt, firstPartyNative: claims.firstPartyNative === true, createdAt: new Date(this.now()).toISOString() }; delete job.error; delete job.artifacts; delete job.issues; state.jobs[id] = job; return this.jobView(job); }
   async artifact(state, request, claims) {
     const artifactId = request.input.artifactId || request.input.assetId;
     let artifact = state.artifacts[artifactId], revision;
@@ -255,6 +273,10 @@ export class SlidesStore {
       job = await this.transaction(state => { const job = state.jobs[jobId]; if (!job || job.status !== 'queued') return null; if (!this.authorizationCheck && job.authorizationExpiresAt <= this.now()) { job.status = 'failed'; job.error = { code: 'AUTHORIZATION_EXPIRED' }; return null; } job.status = 'running'; return clone(job); });
       if (!job) return;
       if (!await authorized(job)) fail(403, 'AUTHORIZATION_REVOKED');
+      if (needsVideoBackend(job.kind, job.options)) {
+        await checkVideoBackend(job.kind, job.options);
+        if (!await authorized(job)) fail(403, 'AUTHORIZATION_REVOKED');
+      }
       timer = setInterval(async () => { if (checking) return; checking = true; try { if (!await authorized(job)) controller.abort(); } catch { controller.abort(); } finally { checking = false; } }, 5000); timer.unref();
       if (job.kind === 'import_asset') result = await this.importAsset(job);
       else {

@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { listDeckIds, readManifest } from "../../edit/deck-view.js";
 import { compileDeckVideoPlan } from "../../commands/video.js";
-import { ensureBackendsInitialized, getBackend, listBackendIds } from "../registry.js";
+import { ensureBackendsInitialized, getBackend, listBackendIds, requireAvailableBackend } from "../registry.js";
 import { resolveTimeline } from "@55aaseclab/lattice-runtime/timeline";
 import { validateStopRevealAnimation } from "@55aaseclab/lattice-runtime/themes/simple-light/presets";
 
@@ -694,6 +694,12 @@ export async function createWorkbenchHandler({ cwd, config }) {
           json(res, 400, { error: `output must stay inside .lattice/generated/video-ui/ (got ${JSON.stringify(body.output ?? null)})` });
           return true;
         }
+      }
+      try {
+        await requireAvailableBackend(backendId);
+      } catch (error) {
+        json(res, 503, { code: error.code || "VIDEO_BACKEND_UNAVAILABLE", error: error.message, diagnostics: error.diagnostics || [] });
+        return true;
       }
       const job = runner.enqueueJob({ deck: deckId, backend: backendId, route: body.route });
       json(res, 202, { jobId: job.id, status: job.status });

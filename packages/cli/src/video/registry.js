@@ -44,3 +44,20 @@ export function ensureBackendsInitialized() {
   registerBackend(createRemotionBackend);
   registerBackend(createHyperFramesBackend);
 }
+
+export async function requireAvailableBackend(id) {
+  ensureBackendsInitialized();
+  const backend = getBackend(id);
+  const report = await backend.doctor();
+  if (report.status !== "available") {
+    const error = new VideoBackendError(`Video backend "${id}" is unavailable in this environment.`, {
+      backendId: id,
+      diagnostics: report.diagnostics,
+      cause: "runtime-unavailable",
+    });
+    error.code = "VIDEO_BACKEND_UNAVAILABLE";
+    error.status = 503;
+    throw error;
+  }
+  return backend;
+}

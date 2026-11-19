@@ -796,11 +796,9 @@ async function resolveBackendForRender({ args }) {
     process.exit(2);
   }
 
-  const { ensureBackendsInitialized, getBackend } = await import("../video/registry.js");
-  ensureBackendsInitialized();
-
+  const { requireAvailableBackend } = await import("../video/registry.js");
   try {
-    return getBackend(backendId);
+    return await requireAvailableBackend(backendId);
   } catch (error) {
     console.error(`[lattice] ${error.message}`);
     process.exit(2);

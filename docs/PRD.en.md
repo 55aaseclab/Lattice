@@ -1,3 +1,5 @@
 # Lattice product requirements
 
 A user can open the deck catalog, inspect an accessible deck and present its slides. Authoring, validation and rendering preserve the slide document and revision boundaries. A fresh checkout is blank, and managed requests use explicit space and resource grants.
+
+Before queuing or executing engine-backed video rendering, run the backend diagnostics. An absent engine returns `VIDEO_BACKEND_UNAVAILABLE` without automatic installation or a new job. Preserve package declarations and feature code, existing video job history and artifact readback. Restart recovery leaves unavailable queued video jobs interrupted while other capabilities remain usable.

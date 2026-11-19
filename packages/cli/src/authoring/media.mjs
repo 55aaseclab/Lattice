@@ -31,3 +31,8 @@ export async function getNativeMediaCatalog() {
     ],
   };
 }
+
+export async function assertVideoBackendAvailable(backendId) {
+  const { requireAvailableBackend } = await import('../video/registry.js');
+  return requireAvailableBackend(backendId);
+}
