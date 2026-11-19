@@ -1,6 +1,6 @@
 {
   "name": "lattice",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "type": "module",
   "description": "Lattice Slide-first creation, presentation, validation, and multi-format delivery system.",
@@ -14,7 +14,8 @@
     "validate": "lattice validate",
     "test": "node --test test/*.test.mjs",
     "business": "node src/business/server.mjs",
-    "start": "node scripts/serve.mjs"
+    "start": "node scripts/serve.mjs",
+    "test:provider": "node --test provider-tests/praxis-provider.check.mjs"
   },
   "engines": {
     "node": ">=20"

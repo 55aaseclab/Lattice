@@ -11,3 +11,7 @@ The native app supports a scoped business service (`npm run business`) with an o
 ## Optional video runtimes
 
 Video engines are provisioned separately in each running environment. Before accepting rendering work, Lattice checks the existing backend diagnostics. If Remotion or HyperFrames is absent, requests report `VIDEO_BACKEND_UNAVAILABLE` and do not enqueue rendering. No package is installed automatically. Native authoring, PNG/PDF/HTML/PPTX export and audio retain their own runtime dependencies. Existing video histories and artifacts remain readable; queued video work with an unavailable backend stays interrupted until an operator provisions that backend and an authorized user retries it.
+
+## Praxis integration
+
+The app-owned [provider contract](docs/PRAXIS-PROVIDER.md) supplies authorized source-backed cards and data-source metadata without exposing a new HTTP endpoint. Run `npm run test:provider` for the isolated provider checks.

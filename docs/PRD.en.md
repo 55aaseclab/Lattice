@@ -3,3 +3,7 @@
 A user can open the deck catalog, inspect an accessible deck and present its slides. Authoring, validation and rendering preserve the slide document and revision boundaries. A fresh checkout is blank, and managed requests use explicit space and resource grants.
 
 Before queuing or executing engine-backed video rendering, run the backend diagnostics. An absent engine returns `VIDEO_BACKEND_UNAVAILABLE` without automatic installation or a new job. Preserve package declarations and feature code, existing video job history and artifact readback. Restart recovery leaves unavailable queued video jobs interrupted while other capabilities remain usable.
+
+## Praxis provider
+
+The app owns a version-1 `praxis-provider.mjs` contract for source-backed workbench cards and data-source metadata. Reads use host-supplied authorized callbacks; the provider has no direct filesystem, credential or network access. Preserve native object links, real revisions or stable content hashes, and distinct empty, partial and unavailable results. Personal card handling never modifies shared records. See [provider contract](PRAXIS-PROVIDER.md).
