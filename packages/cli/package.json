@@ -1,0 +1,38 @@
+{
+  "name": "@55aaseclab/lattice-cli",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./authoring": "./src/authoring/index.mjs",
+    "./authoring/media": "./src/authoring/media.mjs",
+    "./package.json": "./package.json"
+  },
+  "description": "Lattice CLI — init, dev, validate, build, export, inspect, screenshot, video plan, video doctor.",
+  "license": "MIT",
+  "bin": {
+    "lattice": "./src/index.js"
+  },
+  "dependencies": {
+    "@55aaseclab/lattice-runtime": "^0.2.0",
+    "@huggingface/transformers": "3.8.1",
+    "kokoro-js": "1.2.1",
+    "onnxruntime-node": "1.21.0",
+    "pixelmatch": "^8.0.0",
+    "playwright-core": "^1.55.0",
+    "pngjs": "^7.0.0",
+    "vite": "^8.0.16",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "4.0.539",
+    "@remotion/cli": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "gsap": "3.15.0",
+    "hyperframes": "0.8.206",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "remotion": "4.0.539"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "schema": "lattice.template.v1",
+  "id": "vuln-explainer",
+  "name": "Vulnerability explainer",
+  "description": "Genre template for vulnerability-explainer decks: eight page archetypes (hook, concept, mechanism, evidence, impact, score, fix-status, takeaways) with per-slot guidance and depth budgets baked into the scaffolded content.js. Structure distilled from the delivered explainer decks' page patterns; all placeholder copy is generic and no frozen text, data, notes, or assets are included.",
+  "target": "deck",
+  "baseTheme": "simple-light",
+  "lineage": {
+    "kind": "genre-pattern",
+    "pattern": "vulnerability-explainer",
+    "note": "Page archetypes synthesized from the delivered vulnerability-explainer decks' page structures (hook -> concept -> mechanism -> evidence -> impact -> score -> fix-status -> takeaways) and their audience-review lessons (stop-enumeration alignment, divergence disclosure, EOL boundary callouts). Every archetype string in the source decks is frozen business content and is deliberately absent; placeholders are generic."
+  },
+  "slots": [
+    { "slide": "hook", "template": "hook", "fields": ["title", "badgeNumber", "badgeLabel", "badgeTone", "hook"] },
+    { "slide": "concept", "template": "concept", "fields": ["title", "analogyStop", "termsStop", "analogy[]", "terms.head", "terms.rows", "terms.caption"] },
+    { "slide": "mechanism", "template": "mechanism", "fields": ["title", "steps[].stop", "steps[].text", "steps[].grid"] },
+    { "slide": "evidence", "template": "evidence", "fields": ["title", "events[].stop", "events[].time", "events[].command", "events[].output", "events[].caption"] },
+    { "slide": "impact", "template": "impact", "fields": ["title", "callout.stop", "callout.title", "callout.body", "callout.tone", "points[].stop", "points[].text"] },
+    { "slide": "score", "template": "score", "fields": ["title", "tableReveal", "caption", "head", "rows", "highlightColumn", "note"] },
+    { "slide": "fix-status", "template": "fix-status", "fields": ["title", "tableReveal", "caption", "head", "rows", "highlightColumn", "callout"] },
+    { "slide": "takeaways", "template": "takeaways", "fields": ["title", "items[].stop", "items[].text"] }
+  ],
+  "budgets": {
+    "schema": "lattice.budgets.v1",
+    "source": "skills/slides-vuln-explainer/SKILL.md 深度预算速查（zh 字数 / en 词数口径，逐条搬入；两处数字一致，以 skill 为准）",
+    "pages": {
+      "hook": {
+        "narrationMin": { "zh": 60, "en": 40 },
+        "hookSentence": { "min": { "zh": 25, "en": 15 }, "max": { "zh": 60, "en": 40 } },
+        "badges": { "min": 1, "max": 2 },
+        "stops": { "min": 1, "max": 1 }
+      },
+      "concept": {
+        "narrationMin": { "zh": 90, "en": 60 },
+        "analogyParagraphs": { "min": 2, "max": 3 },
+        "analogyParagraphMax": { "zh": 60, "en": 45 },
+        "termRows": { "min": 3, "max": 6 },
+        "stops": { "min": 2, "max": 2 }
+      },
+      "mechanism": {
+        "steps": { "min": 3, "max": 6 },
+        "stepText": { "min": { "zh": 25, "en": 15 }, "max": { "zh": 80, "en": 50 } },
+        "screenMax": { "zh": 260, "en": 170 },
+        "gridCellsMax": 16,
+        "stopsPerStep": true
+      },
+      "evidence": {
+        "narrationMin": { "zh": 90, "en": 60 },
+        "events": { "min": 2, "max": 5 },
+        "eventTerminal": true,
+        "stopsPerEvent": true
+      },
+      "impact": {
+        "narrationMin": { "zh": 90, "en": 60 },
+        "callouts": { "min": 1, "max": 1 },
+        "points": { "min": 2, "max": 4 },
+        "pointText": { "min": { "zh": 20, "en": 12 }, "max": { "zh": 60, "en": 40 } },
+        "stopsPerCalloutAndPoints": true
+      },
+      "score": {
+        "narrationMin": { "zh": 60, "en": 40 },
+        "rows": { "min": 2, "max": 4 },
+        "noteBodySentencesMax": 2,
+        "stops": { "min": 1, "max": 2 }
+      },
+      "fix-status": {
+        "narrationMin": { "zh": 60, "en": 40 },
+        "rows": { "min": 2, "max": 6 },
+        "calloutBodySentencesMax": 2,
+        "stops": { "min": 1, "max": 7 }
+      },
+      "takeaways": {
+        "items": { "min": 3, "max": 5 },
+        "itemText": { "min": { "zh": 20, "en": 12 }, "max": { "zh": 60, "en": 40 } },
+        "stopsPerItem": true
+      }
+    }
+  },
+  "vars": [
+    { "name": "deckId", "required": true, "description": "Deck directory id (stable slug)" },
+    { "name": "title", "description": "Deck title in manifest and registry" },
+    { "name": "owner", "description": "Deck owner handle" },
+    { "name": "presenter", "description": "Presenter name" },
+    { "name": "description", "description": "Optional deck description" }
+  ]
+}

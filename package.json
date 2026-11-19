@@ -1,0 +1,29 @@
+{
+  "name": "lattice",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Lattice Slide-first creation, presentation, validation, and multi-format delivery system.",
+  "workspaces": [
+    "packages/runtime",
+    "packages/cli"
+  ],
+  "scripts": {
+    "dev": "lattice dev",
+    "build": "vite build && vite build --mode praxis",
+    "validate": "lattice validate",
+    "test": "node --test test/*.test.mjs",
+    "business": "node src/business/server.mjs",
+    "start": "node scripts/serve.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@55aaseclab/lattice-runtime": "0.2.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@55aaseclab/lattice-cli": "0.2.0"
+  }
+}

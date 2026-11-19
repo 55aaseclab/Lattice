@@ -1,0 +1,276 @@
+import fs from "node:fs";
+import path from "node:path";
+import { build, createServer } from "vite";
+import { loadConfig } from "../config/index.js";
+import {
+  DECK_SCHEMA,
+  RUNTIME_VERSION,
+  validateAssets,
+  validateDeckManifestV2,
+  validateLayoutGrids,
+  validateManifest,
+} from "@55aaseclab/lattice-runtime";
+
+export async function exportCommand({ args, cwd = process.cwd() }) {
+  const config = await loadConfig(cwd);
+  const deckId = args.deck;
+
+  if (!deckId || deckId === true) {
+    throw new Error("usage: lattice export --deck <deck-id> [--out <dir>] [--skip-build]");
+  }
+
+  const registry = await loadRegistry(cwd, config);
+  const deck = registry?.[deckId];
+  if (!deck) {
+    const available = registry ? Object.keys(registry).join(", ") : "none";
+    console.error(`[lattice] unknown deck id: ${deckId}`);
+    console.error(`[lattice] available decks: ${available}`);
+    process.exit(1);
+  }
+
+  const deckDir = path.resolve(cwd, config.decksDir, deckId);
+  const manifestPath = path.join(deckDir, "manifest.json");
+  if (fs.existsSync(manifestPath)) {
+    const sourceManifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    // Schema dispatch is explicit: each validator only accepts the schema it
+    // is named for. The exported Slide Web Bundle keeps its own frozen
+    // contract (see assembleOutput) regardless of source schema.
+    const manifestReport = sourceManifest.schema === "lattice.deck.v2"
+      ? validateDeckManifestV2(sourceManifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION })
+      : validateManifest(sourceManifest, { expectedId: deckId, runtimeVersion: RUNTIME_VERSION });
+    if (!manifestReport.ok) {
+      console.error(`[lattice] deck "${deckId}" manifest is invalid:`);
+      for (const error of manifestReport.errors) console.error(`  - [${error.type}] ${error.message}`);
+      process.exit(1);
+    }
+  }
+
+  const gridReport = validateLayoutGrids();
+  if (!gridReport.ok) {
+    console.warn("[lattice] layout grid validation issues:", gridReport.errors);
+  }
+
+  const workDir = path.join(cwd, ".lattice-export", deckId);
+  const buildDir = path.join(workDir, "dist");
+  const outDir = path.resolve(args.out || path.join(cwd, config.outDir, "static-decks", deckId));
+
+  fs.rmSync(workDir, { recursive: true, force: true });
+  fs.mkdirSync(workDir, { recursive: true });
+  writeStaticEntry(workDir, { deckId, theme: manifestTheme(deckDir, config.theme), styles: deckStylesPath(cwd, config, deckId) });
+
+  console.log("[lattice] building static deck entry (vite build)...");
+  await build({
+    root: workDir,
+    base: "./",
+    publicDir: false,
+    build: {
+      outDir: buildDir,
+      emptyOutDir: true,
+      rollupOptions: { input: path.join(workDir, "entry.html") },
+    },
+  });
+
+  const builtEntry = fs.existsSync(path.join(buildDir, "entry.html"))
+    ? path.join(buildDir, "entry.html")
+    : path.join(buildDir, "index.html");
+  try {
+    assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir });
+  } catch (error) {
+    // Leave no broken export or transient build workspace behind.
+    fs.rmSync(outDir, { recursive: true, force: true });
+    throw error;
+  } finally {
+    fs.rmSync(workDir, { recursive: true, force: true });
+    const exportRoot = path.dirname(workDir);
+    if (fs.existsSync(exportRoot) && fs.readdirSync(exportRoot).length === 0) fs.rmdirSync(exportRoot);
+  }
+}
+
+async function loadRegistry(cwd, config) {
+  if (!config.registry) return null;
+  const registryPath = path.resolve(cwd, config.registry);
+  if (!fs.existsSync(registryPath)) return null;
+  const server = await createServer({
+    root: cwd,
+    appType: "custom",
+    server: { middlewareMode: true },
+  });
+  try {
+    const module = await server.ssrLoadModule(`/${path.relative(cwd, registryPath).split(path.sep).join("/")}`);
+    return module.deckRegistry ?? null;
+  } finally {
+    await server.close();
+  }
+}
+
+function manifestTheme(deckDir, fallbackTheme) {
+  const manifestPath = path.join(deckDir, "manifest.json");
+  if (!fs.existsSync(manifestPath)) return fallbackTheme;
+  try {
+    return JSON.parse(fs.readFileSync(manifestPath, "utf8")).theme || fallbackTheme;
+  } catch {
+    return fallbackTheme;
+  }
+}
+
+function deckStylesPath(cwd, config, deckId) {
+  const stylesPath = path.join(cwd, config.decksDir, deckId, "styles.css");
+  return fs.existsSync(stylesPath) ? stylesPath : "";
+}
+
+function writeStaticEntry(workDir, { theme, styles }) {
+  // CSS cascade order must match the portal's module graph: the renderer's
+  // stylesheets (reveal/white/katex/app) execute FIRST there, and the theme
+  // + deck stylesheets come after. Bundling theme styles before the renderer
+  // inverts the cascade (e.g. `.reveal p` margins would override the theme's
+  // `.ph p { margin: 0 }`) and visibly changes exported slide layout.
+  const imports = [
+    `import { bootStaticDeck } from "@55aaseclab/lattice-runtime/renderer";`,
+    `import "@55aaseclab/lattice-runtime/themes/${theme}/styles.css";`,
+    `import { defaultPalette, palettes } from "@55aaseclab/lattice-runtime/themes/${theme}";`,
+    ...(styles ? [`import ${JSON.stringify(path.relative(workDir, styles).split(path.sep).join("/"))};`] : []),
+    ``,
+    `bootStaticDeck({ themes: palettes, defaultTheme: defaultPalette });`,
+  ];
+
+  fs.writeFileSync(
+    path.join(workDir, "entry.js"),
+    `${imports.join("\n")}\n`,
+  );
+  fs.writeFileSync(
+    path.join(workDir, "entry.html"),
+    `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lattice Deck</title>
+    <script type="module" src="./entry.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+`,
+  );
+}
+
+function assembleOutput({ cwd, config, deckId, deck, deckDir, builtEntry, outDir }) {
+  const sourceManifestPath = path.join(deckDir, "manifest.json");
+  const sourceManifest = fs.existsSync(sourceManifestPath)
+    ? JSON.parse(fs.readFileSync(sourceManifestPath, "utf8"))
+    : {};
+  const markupSlides = deck
+    .buildSlides()
+    .map((markup) =>
+      markup.replaceAll(
+        new RegExp(`/decks/${deckId}/(assets|references)/`, "g"),
+        "./$1/",
+      ),
+    );
+
+  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.mkdirSync(outDir, { recursive: true });
+
+  const assetsDir = path.join(outDir, "assets");
+  fs.mkdirSync(assetsDir, { recursive: true });
+  fs.cpSync(path.join(path.dirname(builtEntry), "assets"), assetsDir, { recursive: true });
+
+  const deckAssetsSource = path.join(deckDir, "assets");
+  if (fs.existsSync(deckAssetsSource)) {
+    fs.cpSync(deckAssetsSource, assetsDir, { recursive: true });
+  }
+
+  const deckReferencesSource = path.join(deckDir, "references");
+  if (fs.existsSync(deckReferencesSource)) {
+    fs.cpSync(deckReferencesSource, path.join(outDir, "references"), { recursive: true });
+  }
+
+  const slides = markupSlides.map((markup, index) => {
+    const meta = extractSlideMeta(markup);
+    return {
+      slideNumber: meta["slide-number"] ?? String(index + 1),
+      layout: meta.layout ?? "",
+      font: meta.font ?? "",
+      sizes: meta.sizes ?? "",
+      html: markup,
+    };
+  });
+
+  const notes = slides.map((slide) => extractNotes(slide.html));
+  const layout = slides.map(({ slideNumber, layout: layoutName, font, sizes }) => ({
+    slideNumber,
+    layout: layoutName,
+    font,
+    sizes,
+  }));
+
+  const manifest = {
+    schema: DECK_SCHEMA,
+    id: deck.id,
+    title: deck.title,
+    ...(sourceManifest.owner ? { owner: sourceManifest.owner } : {}),
+    ...(sourceManifest.presenter ? { presenter: sourceManifest.presenter } : {}),
+    runtime: RUNTIME_VERSION,
+    theme: manifestTheme(deckDir, config.theme),
+    entry: {
+      content: "./content.json",
+      layout: "./layout.json",
+      notes: "./notes.json",
+    },
+    assets: "./assets/",
+  };
+
+  fs.writeFileSync(
+    path.join(outDir, "content.json"),
+    JSON.stringify({
+      id: deck.id,
+      title: deck.title,
+      ...(sourceManifest.presenter ? { presenter: sourceManifest.presenter } : {}),
+      description: deck.description,
+      slides,
+    }, null, 2),
+  );
+  fs.writeFileSync(path.join(outDir, "layout.json"), JSON.stringify(layout, null, 2));
+  fs.writeFileSync(path.join(outDir, "notes.json"), JSON.stringify(notes, null, 2));
+  fs.writeFileSync(path.join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
+  fs.copyFileSync(builtEntry, path.join(outDir, "index.html"));
+
+  const assetReport = validateAssets(markupSlides, {
+    exists: (url) => fs.existsSync(path.join(outDir, url.replace(/^\.\//, ""))),
+  });
+  if (!assetReport.ok) {
+    // A static export with missing assets is broken output, not a warning:
+    // the exported deck would render with dead references, so fail loudly.
+    throw new Error(
+      `export of deck "${deckId}" is missing ${assetReport.errors.length} asset(s): ` +
+      assetReport.errors.map((error) => error.message).join("; "),
+    );
+  }
+
+  console.log(`[lattice] exported deck "${deck.id}" to ${outDir}`);
+  console.log(`[lattice] slides: ${slides.length}, assets checked: ${assetReport.assets.length}, missing: ${assetReport.errors.length}`);
+}
+
+function extractNotes(markup) {
+  const match = markup.match(/<aside class="slide-note-source" hidden>([\s\S]*?)<\/aside>/);
+  if (!match) return "";
+  return match[1]
+    .replace(/<p>/g, "")
+    .replace(/<\/p>/g, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+}
+
+function extractSlideMeta(markup) {
+  const openTag = markup.match(/<section\s+([^>]*)>/);
+  if (!openTag) return {};
+  const attrs = {};
+  const attrPattern = /data-([a-z-]+)="([^"]*)"/g;
+  let match;
+  while ((match = attrPattern.exec(openTag[1])) !== null) {
+    attrs[match[1]] = match[2];
+  }
+  return attrs;
+}

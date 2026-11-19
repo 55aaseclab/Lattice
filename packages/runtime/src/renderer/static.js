@@ -1,0 +1,154 @@
+import "reveal.js/reveal.css";
+import "reveal.js/theme/white.css";
+import "katex/dist/katex.min.css";
+import renderMathInElement from "katex/contrib/auto-render";
+import "./app.css";
+import {
+  renderSlides,
+  applyDeckIdentity,
+  createRevealDeck,
+  updateCanvasSlideNumbers,
+  initInteractiveTrendCharts,
+  initInteractiveAnnotations,
+} from "./index.js";
+import { installDimensionInspection } from "../inspect/dimension-overlay.js";
+import { installRenderedInspection } from "../inspect/index.js";
+import { createThemeController, installThemePicker } from "./theme.js";
+
+export async function bootStaticDeck({
+  container = "#app",
+  themes = [],
+  defaultTheme,
+  themePrefix = "sl-theme",
+  themeDataset = "latticeTheme",
+  themeStorageKey = "lattice-theme",
+} = {}) {
+  const appElement = document.querySelector(container);
+  const deckUrl = new URL(window.location.href);
+  const gridOverlayParam = deckUrl.searchParams.get("grid") === "1";
+
+  const manifest = await (await fetch("./manifest.json", { cache: "no-cache" })).json();
+  const content = await (await fetch(manifest.entry.content, { cache: "no-cache" })).json();
+
+  document.title = content.title || manifest.id;
+
+  const deckDefinition = {
+    id: content.id || manifest.id,
+    title: content.title || manifest.id,
+    owner: manifest.owner || "",
+    presenter: content.presenter || manifest.presenter || "",
+    description: content.description || "",
+    buildSlides: () => content.slides.map((slide) => slide.html),
+  };
+
+  applyDeckIdentity(appElement, deckDefinition.id);
+
+  const themeController = themes.length ? createThemeController({
+    themes,
+    defaultTheme,
+    storageKey: `${themeStorageKey}:${deckDefinition.id}`,
+    prefix: themePrefix,
+    dataset: themeDataset,
+    onChange: (theme) => {
+      document.title = `${theme.name} · ${deckDefinition.title || "Slides"}`;
+    },
+  }) : null;
+
+  renderStaticDeckApp(appElement, deckDefinition, { gridOverlayParam, themeController, themes });
+}
+
+function renderStaticDeckApp(container, deck, {
+  gridOverlayParam = false,
+  themeController = null,
+  themes = [],
+} = {}) {
+  const slidesMarkup = deck.buildSlides();
+
+  container.innerHTML = `
+    <div class="app-shell">
+      <header class="app-menu">
+        <div class="app-menu-brand">
+          <h1 class="app-menu-title">${deck.title}</h1>
+          <p class="app-menu-subtitle">${deck.description}</p>
+        </div>
+        <div class="app-menu-actions">
+          <button class="app-menu-button" id="grid-toggle" type="button" aria-pressed="false">
+            Grid: Off
+          </button>
+        </div>
+      </header>
+      <div class="deck-runtime">
+        <div class="reveal">
+          <div class="slides" id="slides"></div>
+        </div>
+        <section class="slide-notes-panel" aria-label="Slide notes">
+          <div class="slide-notes-kicker">Notes</div>
+          <div class="slide-note-display" id="slide-note-display"></div>
+        </section>
+      </div>
+    </div>
+  `;
+
+  if (themeController) {
+    installThemePicker({
+      container: container.querySelector(".app-menu-actions"),
+      controller: themeController,
+      themes,
+    });
+  }
+
+  const slidesElement = document.querySelector("#slides");
+  renderSlides(slidesElement, slidesMarkup);
+  installDimensionInspection(slidesElement);
+  updateCanvasSlideNumbers(slidesElement);
+  initInteractiveTrendCharts(slidesElement, deck.id);
+  initInteractiveAnnotations(slidesElement, deck.id);
+  renderMathInElement(slidesElement, {
+    delimiters: [
+      { left: "$$", right: "$$", display: true },
+      { left: "$", right: "$", display: false },
+    ],
+    throwOnError: false,
+  });
+
+  const noteDisplay = document.querySelector("#slide-note-display");
+  const gridToggle = document.querySelector("#grid-toggle");
+
+  function setGridOverlay(enabled) {
+    document.querySelectorAll(".slide-canvas").forEach((slideEl) => {
+      slideEl.classList.toggle("show-grid-overlay", enabled);
+    });
+    gridToggle.textContent = enabled ? "Grid: On" : "Grid: Off";
+    gridToggle.setAttribute("aria-pressed", String(enabled));
+  }
+
+  gridToggle.addEventListener("click", () => {
+    const enabled = !document.querySelector(".slide-canvas")?.classList.contains("show-grid-overlay");
+    setGridOverlay(enabled);
+  });
+
+  if (gridOverlayParam) {
+    setGridOverlay(true);
+  }
+
+  function updateNotes(slide) {
+    if (!slide) return;
+    const noteSource = slide.querySelector(".slide-note-source");
+    noteDisplay.innerHTML = noteSource?.innerHTML?.trim()
+      ? noteSource.innerHTML
+      : '<p class="slide-note-empty">No notes for this slide.</p>';
+  }
+
+  const revealDeck = createRevealDeck();
+  window.__latticeReveal = revealDeck;
+  revealDeck.initialize();
+  revealDeck.on("ready", async (event) => {
+    updateCanvasSlideNumbers();
+    updateNotes(event.currentSlide);
+    await installRenderedInspection(slidesElement, { deck: deck.id });
+  });
+  revealDeck.on("slidechanged", (event) => {
+    updateCanvasSlideNumbers();
+    updateNotes(event.currentSlide);
+  });
+}

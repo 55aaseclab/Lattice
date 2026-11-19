@@ -1,0 +1,467 @@
+/* Frame Mode is engine-owned chrome. It reads semantic theme tokens while
+   the authored slide remains the single source of layout and content. */
+.motion-shell {
+  min-height: 100vh;
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 88%, #edf0eb);
+  color: var(--sl-theme-ink, #202622);
+}
+
+.motion-menu {
+  position: relative;
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 92%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 86%, transparent);
+}
+
+.motion-workbench {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: calc(100vh - 67px);
+}
+
+.motion-stage-section {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  padding: 18px max(20px, calc((100vw - 1240px) / 2)) 16px;
+  box-sizing: border-box;
+}
+
+.motion-stage-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  min-width: 0;
+  padding: 0 4px 12px;
+}
+
+.motion-kicker,
+.motion-stage-heading h2,
+.motion-analysis-status,
+.motion-help {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.motion-kicker {
+  color: var(--sl-theme-muted, #788078);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.motion-stage-heading h2 {
+  max-width: min(740px, 68vw);
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--sl-theme-ink, #202622);
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-analysis-status {
+  color: var(--sl-theme-muted, #788078);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.motion-stage {
+  position: relative;
+  min-height: min(61.5vh, 620px);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 84%, transparent);
+  background:
+    linear-gradient(45deg, transparent 49.5%, color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 35%, transparent) 49.75%, color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 35%, transparent) 50.25%, transparent 50.5%) 0 0 / 12px 12px,
+    color-mix(in srgb, var(--sl-theme-muted-surface, #f4f6f3) 74%, var(--sl-theme-canvas, #fff));
+  box-shadow: 0 14px 34px rgba(24, 32, 27, 0.055);
+}
+
+.motion-stage-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.motion-stage-canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 960px;
+  height: 540px;
+  transform: translate(-50%, -50%) scale(var(--motion-scale, 1));
+  transform-origin: center;
+}
+
+.motion-layer {
+  position: absolute;
+  inset: 0;
+  width: 960px;
+  height: 540px;
+  overflow: hidden;
+}
+
+.motion-layer .slide-canvas {
+  box-sizing: border-box;
+  width: 960px;
+  height: 540px;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.motion-layer-current { z-index: 4; }
+.motion-layer-previous { z-index: 2; opacity: 0.2; }
+.motion-layer-next { z-index: 5; opacity: 0.11; pointer-events: none; }
+.motion-layer-previous .slide-canvas,
+.motion-layer-next .slide-canvas { background: transparent !important; }
+
+.motion-stage-onion .motion-layer-current .slide-canvas {
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 82%, transparent) !important;
+}
+
+.motion-unit {
+  transition: opacity 120ms linear, filter 120ms linear, outline-color 120ms linear;
+}
+
+.motion-hidden {
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.motion-focus {
+  position: relative;
+  z-index: 8;
+  outline: 2px solid color-mix(in srgb, var(--sl-theme-accent, #c46b35) 78%, transparent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--sl-theme-accent-soft, #f3ddcb) 74%, transparent);
+}
+
+.motion-selected {
+  position: relative;
+  z-index: 10;
+  cursor: pointer;
+  outline: 2px solid var(--sl-theme-roadmap, #2f6b55) !important;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 7px color-mix(in srgb, var(--sl-theme-soft-surface, #d7e7dc) 84%, transparent) !important;
+}
+
+.motion-layer-current [data-motion-unit] { cursor: pointer; }
+
+.motion-new {
+  position: relative;
+  z-index: 8;
+  outline: 2px solid var(--sl-theme-accent, #c46b35);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--sl-theme-accent-soft, #f3ddcb) 72%, transparent);
+}
+
+.motion-dim { opacity: 0.28; }
+
+.motion-structure-unit {
+  position: relative;
+  z-index: 8;
+  cursor: pointer;
+  outline: 1.5px dashed color-mix(in srgb, var(--sl-theme-roadmap, #2f6b55) 80%, transparent);
+  outline-offset: 4px;
+}
+
+.motion-structure-unit::after {
+  position: absolute;
+  z-index: 30;
+  top: -16px;
+  left: 0;
+  padding: 1px 4px;
+  overflow: hidden;
+  max-width: calc(100% - 8px);
+  border: 1px solid color-mix(in srgb, var(--sl-theme-roadmap, #2f6b55) 40%, transparent);
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 95%, transparent);
+  color: var(--sl-theme-roadmap, #2f6b55);
+  content: attr(data-motion-label);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 8px;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-lasso {
+  position: absolute;
+  z-index: 40;
+  display: none;
+  box-sizing: border-box;
+  border: 1px dashed var(--sl-theme-roadmap, #2f6b55);
+  background: color-mix(in srgb, var(--sl-theme-soft-surface, #d7e7dc) 44%, transparent);
+  pointer-events: none;
+}
+
+.motion-lasso.is-visible { display: block; }
+
+.motion-workbench-panel {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  gap: 9px;
+  padding: 12px max(20px, calc((100vw - 1240px) / 2)) 10px;
+  border-top: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 84%, transparent);
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 94%, transparent);
+  box-shadow: 0 -10px 26px rgba(24, 32, 27, 0.045);
+  backdrop-filter: blur(14px);
+}
+
+.motion-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.motion-primary-controls { min-height: 32px; }
+
+.motion-frame-readout {
+  min-width: 82px;
+  color: var(--sl-theme-ink, #202622);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+.motion-button,
+.motion-lens-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 29px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 88%, transparent);
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 96%, transparent);
+  color: var(--sl-theme-body, #4f5d55);
+  font: 400 12px/1 Arial, Helvetica, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.motion-button:hover,
+.motion-button:focus-visible,
+.motion-lens-button:hover,
+.motion-lens-button:focus-visible {
+  border-color: color-mix(in srgb, var(--sl-theme-roadmap, #2f6b55) 60%, transparent);
+  color: var(--sl-theme-ink, #202622);
+  outline: none;
+}
+
+.motion-button:disabled {
+  cursor: default;
+  opacity: 0.38;
+}
+
+.motion-button-strong {
+  color: var(--sl-theme-ink, #202622);
+  font-weight: 700;
+}
+
+.motion-button-quiet { margin-left: auto; }
+
+.motion-frame-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-left: 4px;
+  color: var(--sl-theme-muted, #778078);
+  font: 700 10px/1 Arial, Helvetica, sans-serif;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.motion-frame-name input {
+  width: 164px;
+  min-height: 28px;
+  padding: 0 7px;
+  border: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 88%, transparent);
+  background: color-mix(in srgb, var(--sl-theme-canvas, #fff) 96%, transparent);
+  color: var(--sl-theme-ink, #202622);
+  font: 400 12px/1 Arial, Helvetica, sans-serif;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.motion-frame-name input:focus {
+  border-color: var(--sl-theme-roadmap, #2f6b55);
+}
+
+.motion-lens-group {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 80%, transparent);
+}
+
+.motion-lens-button {
+  min-width: 66px;
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 80%, transparent);
+}
+
+.motion-lens-button:last-child { border-right: 0; }
+
+.motion-lens-button.is-active {
+  background: var(--sl-theme-label-surface, #e7f0e8);
+  color: var(--sl-theme-roadmap, #2f6b55);
+  font-weight: 700;
+}
+
+.motion-frame-rail {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 102px;
+  gap: 6px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  padding: 2px 2px 4px;
+}
+
+.motion-frame-card {
+  display: grid;
+  grid-template-columns: 19px 104px;
+  grid-template-rows: 62px auto;
+  align-items: start;
+  flex: 0 0 131px;
+  gap: 3px 5px;
+  padding: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--sl-theme-body, #4f5d55);
+  cursor: grab;
+  font-family: Arial, Helvetica, sans-serif;
+  text-align: left;
+}
+
+.motion-frame-card:hover,
+.motion-frame-card:focus-visible {
+  border-color: color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 96%, transparent);
+  outline: none;
+}
+
+.motion-frame-card.is-current {
+  border-color: color-mix(in srgb, var(--sl-theme-roadmap, #2f6b55) 68%, transparent);
+  background: color-mix(in srgb, var(--sl-theme-label-surface, #e7f0e8) 56%, transparent);
+}
+
+.motion-frame-card:active { cursor: grabbing; }
+
+.motion-frame-card-number {
+  padding-top: 2px;
+  color: var(--sl-theme-muted, #778078);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.motion-frame-thumb {
+  position: relative;
+  display: block;
+  width: 104px;
+  height: 59px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 78%, transparent);
+  background: var(--sl-theme-canvas, #fff);
+  box-sizing: border-box;
+}
+
+.motion-thumb-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 960px;
+  height: 540px;
+  transform: scale(0.1082);
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+.motion-thumb-canvas .slide-canvas {
+  width: 960px;
+  height: 540px;
+  border: 0;
+}
+
+.motion-frame-card-label {
+  grid-column: 1 / -1;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: var(--sl-theme-body, #4f5d55);
+  font-size: 10px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-frame-card.is-current .motion-frame-card-label { color: var(--sl-theme-roadmap, #2f6b55); }
+
+.motion-frame-arrow {
+  align-self: center;
+  flex: 0 0 auto;
+  margin: 0 -1px;
+  color: color-mix(in srgb, var(--sl-theme-muted, #778078) 68%, transparent);
+  font: 14px/1 Arial, Helvetica, sans-serif;
+}
+
+.motion-edit-controls { min-height: 29px; }
+
+.motion-selection {
+  min-width: 160px;
+  max-width: 270px;
+  overflow: hidden;
+  color: var(--sl-theme-muted, #778078);
+  font: 12px/1 Arial, Helvetica, sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-controls-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--sl-theme-line, #d7ddd9) 90%, transparent);
+}
+
+.motion-help {
+  color: var(--sl-theme-muted, #778078);
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+@media (max-width: 950px) {
+  .motion-stage-section,
+  .motion-workbench-panel { padding-inline: 14px; }
+  .motion-stage { min-height: 47vh; }
+  .motion-analysis-status { display: none; }
+  .motion-primary-controls { flex-wrap: wrap; }
+  .motion-lens-group { margin-left: 0; }
+  .motion-edit-controls { flex-wrap: wrap; }
+  .motion-button-quiet { margin-left: 0; }
+}
+
+@media (max-width: 580px) {
+  .motion-menu { align-items: flex-start; }
+  .motion-menu .app-menu-actions { justify-content: flex-end; }
+  .motion-stage-heading h2 { max-width: 80vw; }
+  .motion-stage { min-height: 35vh; }
+  .motion-frame-name { order: 10; width: 100%; margin-left: 0; }
+  .motion-frame-name input { flex: 1; width: auto; }
+  .motion-lens-group { width: 100%; }
+  .motion-lens-button { flex: 1 1 0; min-width: 0; padding-inline: 4px; }
+}

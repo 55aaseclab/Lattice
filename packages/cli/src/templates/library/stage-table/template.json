@@ -1,0 +1,25 @@
+{
+  "schema": "lattice.template.v1",
+  "id": "stage-table",
+  "name": "Stage table overview",
+  "description": "Overview slide pattern: a title-only layout carrying a grid of stage cells (kicker, title, summary). Structure derived from a real, frozen research-talk deck's overview slide; no frozen text, data, notes, or assets are included.",
+  "target": "deck",
+  "baseTheme": "simple-light",
+  "lineage": {
+    "kind": "derived-from-real-deck-structure",
+    "pattern": "stage-table-overview",
+    "note": "Layout skeleton only (title + N three-part stage cells over the Theme's title-only layout). All cell copy in the source deck is frozen business content and is deliberately absent; placeholders are generic."
+  },
+  "slots": [
+    { "slide": "intro", "template": "title-slide", "fields": ["title", "subtitle"] },
+    { "slide": "stages", "template": "title-only", "fields": ["title", "stages[].kicker", "stages[].title", "stages[].summary"] }
+  ],
+  "vars": [
+    { "name": "deckId", "required": true, "description": "Deck directory id (stable slug)" },
+    { "name": "title", "description": "Deck title in manifest and registry" },
+    { "name": "owner", "description": "Deck owner handle" },
+    { "name": "presenter", "description": "Presenter name" },
+    { "name": "description", "description": "Optional deck description" },
+    { "name": "stages", "description": "Number of stage cells (1-8, default 3)" }
+  ]
+}

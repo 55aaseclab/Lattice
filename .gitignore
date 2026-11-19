@@ -1,0 +1,15 @@
+.lattice-export
+.lattice/
+.lattice/cache/
+.lattice/generated/
+.lattice/runtime/
+.npm-cache
+dist
+dist-*/
+dist-public-business/
+dist/
+lattice-screenshots/
+node_modules
+node_modules/
+tmp
+dist-business/

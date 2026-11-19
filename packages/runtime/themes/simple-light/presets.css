@@ -1,0 +1,81 @@
+/* ---- M7 stop-reveal animation presets (lattice.stop-reveal-presets.v1) ----
+ *
+ * Named presets are activated ONLY on decks that declare a lattice.timeline.v1
+ * with animation parameters: the mounting surface (Slide Runtime, workbench
+ * preview, video host) sets data-lattice-anim on the slide canvas from the
+ * timeline declaration. Decks without a timeline declaration never match the
+ * selectors below, so static rendering is untouched pixel-for-pixel.
+ *
+ * The presets are pure per-frame CSS keyed on the canonical frame variables
+ * (no keyframes, no wall-clock): each painted frame is a pure function of the
+ * integer frame, identical in DOM, workbench preview, and video export.
+ *   --lattice-reveal-offset      frames since the element's stop revealed
+ *                                (negative before; stagger index baked in by
+ *                                the frame-state applier)
+ *   --lattice-anim-duration-frames  reveal window length in frames
+ *   --lattice-anim-distance      travel distance for directional presets
+ * Reveal windows END exactly on the stop frame: seeking to a stop always
+ * shows its fully revealed state.
+ */
+
+[data-lattice-anim] [data-lattice-reveal] {
+  --lattice-reveal-progress: clamp(
+    0,
+    calc((var(--lattice-reveal-offset, 0) + var(--lattice-anim-duration-frames, 12)) / var(--lattice-anim-duration-frames, 12)),
+    1
+  );
+}
+
+[data-lattice-anim="fade"] [data-lattice-reveal] {
+  opacity: var(--lattice-reveal-progress);
+}
+
+[data-lattice-anim="rise"] [data-lattice-reveal] {
+  opacity: var(--lattice-reveal-progress);
+}
+
+[data-lattice-anim="rise"][data-lattice-anim-direction="up"] [data-lattice-reveal] {
+  transform: translateY(calc((1 - var(--lattice-reveal-progress)) * var(--lattice-anim-distance, 24px)));
+}
+
+[data-lattice-anim="rise"][data-lattice-anim-direction="down"] [data-lattice-reveal] {
+  transform: translateY(calc((var(--lattice-reveal-progress) - 1) * var(--lattice-anim-distance, 24px)));
+}
+
+[data-lattice-anim="rise"][data-lattice-anim-direction="left"] [data-lattice-reveal] {
+  transform: translateX(calc((1 - var(--lattice-reveal-progress)) * var(--lattice-anim-distance, 24px)));
+}
+
+[data-lattice-anim="rise"][data-lattice-anim-direction="right"] [data-lattice-reveal] {
+  transform: translateX(calc((var(--lattice-reveal-progress) - 1) * var(--lattice-anim-distance, 24px)));
+}
+
+[data-lattice-anim="wipe"] [data-lattice-reveal] {
+  opacity: var(--lattice-reveal-progress);
+}
+
+[data-lattice-anim="wipe"][data-lattice-anim-direction="up"] [data-lattice-reveal] {
+  clip-path: inset(calc((1 - var(--lattice-reveal-progress)) * 100%) 0 0 0);
+}
+
+[data-lattice-anim="wipe"][data-lattice-anim-direction="down"] [data-lattice-reveal] {
+  clip-path: inset(0 0 calc((1 - var(--lattice-reveal-progress)) * 100%) 0);
+}
+
+[data-lattice-anim="wipe"][data-lattice-anim-direction="left"] [data-lattice-reveal] {
+  clip-path: inset(0 calc((1 - var(--lattice-reveal-progress)) * 100%) 0 0);
+}
+
+[data-lattice-anim="wipe"][data-lattice-anim-direction="right"] [data-lattice-reveal] {
+  clip-path: inset(0 0 0 calc((1 - var(--lattice-reveal-progress)) * 100%));
+}
+
+/* Reduced motion: the reveal stays frame-accurate (opacity still resolves
+   per frame) but no element travels and no clip mask moves. */
+@media (prefers-reduced-motion: reduce) {
+  [data-lattice-anim="rise"] [data-lattice-reveal],
+  [data-lattice-anim="wipe"] [data-lattice-reveal] {
+    transform: none;
+    clip-path: none;
+  }
+}

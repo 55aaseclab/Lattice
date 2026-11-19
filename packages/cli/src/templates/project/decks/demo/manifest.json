@@ -1,0 +1,15 @@
+{
+  "schema": "lattice.deck.v1",
+  "id": "demo",
+  "title": "My First Lattice Deck",
+  "owner": "your-handle",
+  "presenter": "Your Name",
+  "runtime": "^0.2.0",
+  "theme": "simple-light",
+  "entry": {
+    "content": "./content.js",
+    "layout": "./layout.js",
+    "notes": "./notes.js"
+  },
+  "assets": "./assets/"
+}
