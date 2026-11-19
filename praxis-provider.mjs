@@ -50,7 +50,8 @@ const metadata = {
       "kind": "directory",
       "location": {
         "kind": "working-directory",
-        "relative": "decks"
+        "relative": "decks",
+        "serviceRole": "native"
       }
     },
     {
@@ -62,7 +63,8 @@ const metadata = {
       "kind": "directory",
       "location": {
         "kind": "working-directory",
-        "relative": ".lattice"
+        "relative": ".lattice",
+        "serviceRole": "native"
       }
     }
   ],

@@ -8,7 +8,7 @@ The host supplies `spaces: string[]`, `actor: {userId, username}`, and `invoke({
 
 Cards retain stable app/space/object IDs and real revisions or stable source-content hashes, app-native links, source-backed previews and authorized evidence. The provider does not generate briefs or change deadlines, assignments or completion. Missing source text has no fabricated preview. Projects only returns unfinished work explicitly assigned to the current user ID or username. The host owns user-private Later/Hide state.
 
-`resolveDataSource(descriptor)` resolves only a descriptor declared by this app against actual runtime environment and mount metadata. `location.env` names a non-secret data-location variable; `relative` names an app-relative child. `map: "spaces"` expands only path values from the private space-file map, with optional literal `suffix` for its artifact directory. `working-directory`, `browser` and `browser-file` identify distinct storage ownership; a browser file is not claimed covered by server backup. Return unresolved locations honestly, never a guessed path. Descriptors and results never include signing-key variables, credentials, data bodies or recovery keys. Inventory is administrator-only metadata.
+`resolveDataSource(descriptor)` resolves only a descriptor declared by this app against actual runtime environment and mount metadata. `location.env` names a non-secret data-location variable; `relative` names an app-relative child. `map: "spaces"` expands only path values from the private space-file map, with optional literal `suffix` for its artifact directory. `working-directory` with `serviceRole: "native"`, `browser` and `browser-file` identify distinct storage ownership; a browser file is not claimed covered by server backup. Return unresolved locations honestly, never a guessed path. Descriptors and results never include signing-key variables, credentials, data bodies or recovery keys. Inventory is administrator-only metadata.
 
 There is no new public HTTP metadata route. The module is loaded by a trusted host and has no direct filesystem, environment, credential, fetch or store access. Host callbacks enforce same-origin/native authentication or the existing signed service boundary. Runtime packaging must include this source module; no video backend is installed or invoked. Test with `npm run test:provider` and the owning native suite. All committed fixtures are fictional.
 
@@ -20,6 +20,6 @@ There is no new public HTTP metadata route. The module is loaded by a trusted ho
 
 卡片保留稳定对象 ID、真实版本或内容摘要、原生对象链接、原文预览和已授权证据，不生成虚构简报，不改变截止时间、分配或完成状态。Projects 只显示明确分配给当前用户的未完成工作。稍后查看、隐藏版本由宿主管理为本人私有偏好。
 
-`resolveDataSource` 只解析本应用声明的数据位置，结合真实运行环境与挂载，绝不推测目录。`env` 表示非密钥的数据位置变量，`relative` 为相对子路径；`map: "spaces"` 只展开私有配置中的路径映射，`suffix` 标识对应附件目录。运行工作目录、浏览器记录和本地文件分别说明；浏览器源录音不冒充服务端备份覆盖。库存仅供管理员查看，不含密钥、凭据、恢复材料或业务正文。
+`resolveDataSource` 只解析本应用声明的数据位置，结合真实运行环境与挂载，绝不推测目录。`env` 表示非密钥的数据位置变量，`relative` 为相对子路径；`map: "spaces"` 只展开私有配置中的路径映射，`suffix` 标识对应附件目录。运行工作目录明确选择 `serviceRole: "native"`；浏览器记录和本地文件分别说明；浏览器源录音不冒充服务端备份覆盖。库存仅供管理员查看，不含密钥、凭据、恢复材料或业务正文。
 
 模块不增加公开 HTTP 路径，也不直接访问文件、环境变量、存储或网络。宿主负责原生会话或既有签名服务验权。运行镜像需包含模块，不安装或调用视频后端。使用 `npm run test:provider` 与原生测试验证，夹具全部为虚构资料。
