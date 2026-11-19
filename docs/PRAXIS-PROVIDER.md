@@ -23,3 +23,7 @@ There is no new public HTTP metadata route. The module is loaded by a trusted ho
 `resolveDataSource` 只解析本应用声明的数据位置，结合真实运行环境与挂载，绝不推测目录。`env` 表示非密钥的数据位置变量，`relative` 为相对子路径；`map: "spaces"` 只展开私有配置中的路径映射，`suffix` 标识对应附件目录。运行工作目录明确选择 `serviceRole: "native"`；浏览器记录和本地文件分别说明；浏览器源录音不冒充服务端备份覆盖。库存仅供管理员查看，不含密钥、凭据、恢复材料或业务正文。
 
 模块不增加公开 HTTP 路径，也不直接访问文件、环境变量、存储或网络。宿主负责原生会话或既有签名服务验权。运行镜像需包含模块，不安装或调用视频后端。使用 `npm run test:provider` 与原生测试验证，夹具全部为虚构资料。
+
+When only the app namespace is known, retain `applicationPath`; do not label it as a host or container path without a verified binding.
+
+只知道应用内位置时保留 `applicationPath`；没有核验绑定时，不将它标作宿主机或容器路径。
