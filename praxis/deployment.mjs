@@ -1,8 +1,10 @@
+import { createDemoIntegration } from './demo.mjs';
 import { createStackIntegration } from './stack.mjs';
 import { localCompose } from './local-compose.mjs';
 import { createManagedService } from './managed-service.mjs';
 import { validateSlidesModelCacheConfig, resolveSlidesModelCaches } from './model-caches.mjs';
 export function createDeploymentIntegration() { return {
+  demo: createDemoIntegration(),
   stack: createStackIntegration(),
   localCompose,
   managedService: createManagedService,
