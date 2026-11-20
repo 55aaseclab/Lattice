@@ -1,0 +1,8 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { readDocument, verifyDatabase } from './sqlite-document.mjs';
+import { migrateDatabase } from './database-migration.mjs';
+
+export async function main(args=process.argv.slice(2)) { const values={};for(let i=0;i<args.length;i++){if(args[i]==='--export'){values.export=true;continue;}if(args[i]==='--writers-stopped'){values.stopped=true;continue;}if(!['--spec','--database','--receipt','--output','--space','--document'].includes(args[i])||!args[i+1])throw new Error('Usage: node src/migrate-sqlite.mjs --spec PRIVATE_JSON --database ABSOLUTE_DB --receipt PRIVATE_JSON --writers-stopped');values[args[i].slice(2)]=args[++i];}if(values.export){const row=readDocument(resolve(values.database),values.space||'local',values.document||'state');verifyDatabase(resolve(values.database));await writeFile(resolve(values.output),JSON.stringify(row.value,null,2)+'\n',{mode:0o600,flag:'wx'});console.log(JSON.stringify({exported:true,revision:row.revision}));return;}const sources=JSON.parse(await readFile(values.spec,'utf8'));const result=await migrateDatabase({sources,database:values.database,receipt:values.receipt,writersStopped:values.stopped,validate(value,source){(() => {if(value?.schemaVersion!==1||!value.documents||!value.jobs)throw new Error('Invalid Lattice state.');})();}});console.log(JSON.stringify({integrity:result.integrity,documents:result.documents,records:result.records,originalsRetained:true}));return result;}
+if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url)main().catch(error=>{console.error('Database conversion failed: '+(error.code||error.name));process.exitCode=1;});

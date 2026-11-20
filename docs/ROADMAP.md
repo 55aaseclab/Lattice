@@ -23,3 +23,7 @@ This app owns its reviewed `praxis-integration.mjs`: native entry policy, typed 
 ## 应用自有 Praxis 集成
 
 本应用在所属仓库维护经审核的 `praxis-integration.mjs`，声明原生入口策略，以及已支持的类型明确的业务操作与 MCP 指引。Praxis 从已安装源码加载声明，继续统一执行授权、签名、策略租约与审计。安装声明不会授予访问权限，也不会启动后端；已有原生界面、数据归属与恢复边界继续生效。
+
+## SQLite 切换
+
+先定义保真条件，再实现原生存储及显式转换/导出，验证合成 API/界面/并发和恢复一致，随后先发布所属仓版本，再由平台固定部署；保留旧文件和原始素材。

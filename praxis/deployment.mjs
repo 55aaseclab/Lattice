@@ -1,9 +1,12 @@
+import { initializeDatabase } from './database.mjs';
 import { createDemoIntegration } from './demo.mjs';
 import { createStackIntegration } from './stack.mjs';
 import { localCompose } from './local-compose.mjs';
 import { createManagedService } from './managed-service.mjs';
 import { validateSlidesModelCacheConfig, resolveSlidesModelCaches } from './model-caches.mjs';
 export function createDeploymentIntegration() { return {
+  initializeDatabase,
+  initialDatabases: [{"path": "lattice.db", "spaceId": "${spaceId}", "value": {"schemaVersion": 1, "cursor": 0, "documents": {}, "versions": {}, "receipts": {}, "jobs": {}, "assets": {}, "uploads": {}, "artifacts": {}, "events": []}}],
   demo: createDemoIntegration(),
   stack: createStackIntegration(),
   localCompose,
@@ -19,6 +22,7 @@ export function createDeploymentIntegration() { return {
   "adapterPort": 4328,
   "runtime": {
     "HOME": "/data/slides/home",
+    "SLIDES_REQUIRE_DATABASE": "1",
     "XDG_CACHE_HOME": "/data/slides/cache",
     "SLIDES_BUSINESS_KEY_FILE": "/config/key",
     "SLIDES_BUSINESS_SPACES_FILE": "/config/spaces.json",
@@ -28,7 +32,7 @@ export function createDeploymentIntegration() { return {
   "spaces": {
     "version": 1,
     "spaces": {
-      "${spaceId}": "/data/slides/slides.json"
+      "${spaceId}": "/data/slides/lattice.db"
     }
   },
   "businessBindings": {

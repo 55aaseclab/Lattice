@@ -22,7 +22,7 @@ const metadata = {
       "labels": {
         "zh": "受管文稿与版本"
       },
-      "kind": "json",
+      "kind": "sqlite",
       "location": {
         "env": "SLIDES_BUSINESS_SPACES_FILE",
         "map": "spaces"
@@ -37,8 +37,7 @@ const metadata = {
       "kind": "directory",
       "location": {
         "env": "SLIDES_BUSINESS_SPACES_FILE",
-        "map": "spaces",
-        "suffix": ".blobs"
+        "map": "blobs"
       }
     },
     {

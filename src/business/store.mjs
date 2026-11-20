@@ -1,3 +1,4 @@
+import { isDatabase, readDocument, writeDocument, hasDocument, transaction as databaseTransaction, beforeCommit } from '../sqlite-document.mjs';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, writeFile, rename, mkdir, rm, lstat, open, copyFile, chmod } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
@@ -49,13 +50,15 @@ function contentFingerprint(document) { const value = clone(document); for (cons
 const notesFingerprint = document => hash(isNative(document) ? document.notes || {} : document.slides.map(s => [s.id, s.notes]));
 
 export class SlidesStore {
-  constructor(file, { renderer, authorizationCheck, now = Date.now } = {}) { this.file = file; this.blobs = `${file}.blobs`; this.renderer = renderer; this.authorizationCheck = authorizationCheck; this.now = now; this.pending = Promise.resolve(); this.running = new Map(); }
+  constructor(file, { spaceId = 'local', blobsDirectory, renderer, authorizationCheck, now = Date.now } = {}) { this.file = file; this.spaceId = spaceId; this.blobs = blobsDirectory || `${file}.blobs`; this.renderer = renderer; this.authorizationCheck = authorizationCheck; this.now = now; this.pending = Promise.resolve(); this.running = new Map(); }
   async read() {
+    if (isDatabase(this.file)) { if (!hasDocument(this.file, this.spaceId)) { if(process.env.SLIDES_REQUIRE_DATABASE==='1')fail(503,'DATA_UNAVAILABLE');return empty(); } const state=readDocument(this.file,this.spaceId).value; if(state.schemaVersion!==1||!state.documents||!state.jobs)fail(500,'INVALID_STORE'); return state; }
     try { const info = await lstat(this.file); if (!info.isFile() || info.isSymbolicLink() || info.size > 128 * 1024 * 1024) fail(500, 'INVALID_STORE'); const state = JSON.parse(await readFile(this.file, 'utf8')); if (state.schemaVersion !== 1 || !state.documents || !state.jobs) fail(500, 'INVALID_STORE'); return state; }
     catch (error) { if (error.code === 'ENOENT') return empty(); throw error; }
   }
   async transaction(callback) {
     const run = async () => {
+      if (isDatabase(this.file)) return databaseTransaction(this.file, async () => { const state=await this.read(); const result=await callback(state); const raw=JSON.stringify(state);if(Buffer.byteLength(raw)>128*1024*1024)fail(413,'STORE_SIZE_LIMIT');await writeDocument(this.file,this.spaceId,'state',state,undefined,raw);return result; });
       await mkdir(dirname(this.file), { recursive: true, mode: 0o700 });
       const lock = `${this.file}.lock`; let acquired = false;
       for (let attempt = 0; attempt < 100 && !acquired; attempt++) {
@@ -103,6 +106,7 @@ export class SlidesStore {
       if (!request.idempotencyKey) fail(428, 'IDEMPOTENCY_REQUIRED');
       let jobId;
       const result = await this.transaction(async state => {
+        if(isDatabase(this.file))beforeCommit(this.file,()=>{if(claims.expiresAt<=this.now())fail(401,'INVALID_ASSERTION');});
         if (claims.expiresAt <= this.now()) fail(401, 'INVALID_ASSERTION');
         const receiptKey = hash([claims.userId, claims.clientId, claims.spaceId, request.idempotencyKey]);
         const requestHash = hash(request), prior = state.receipts[receiptKey];

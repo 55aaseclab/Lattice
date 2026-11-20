@@ -1,3 +1,4 @@
+import { isDatabase } from '../src/sqlite-document.mjs';
 import { dirname, resolve } from 'node:path';
 import { resolveSlidesModelCaches } from './model-caches.mjs';
 export async function createManagedService({ app: slides, config, corePort: port, uid, gid, workspace, controlDirectory, stateDirectories, appDirectories, readOnlyFiles, privatePath, readPrivateJson, distinctDirectories, mount, overlaps, isWithin, fail, build }) {
@@ -7,9 +8,9 @@ export async function createManagedService({ app: slides, config, corePort: port
     await privatePath(slides.dataDir, { directory: true, data: true });
     await privatePath(slides.spacesFile);
     const mapping = await readPrivateJson(slides.spacesFile);
-    if (!mapping || Object.keys(mapping).some(key => key !== 'spaces') || !mapping.spaces || typeof mapping.spaces !== 'object' || Array.isArray(mapping.spaces) || JSON.stringify(Object.keys(mapping.spaces).sort()) !== JSON.stringify([...slides.spaces].sort())) fail('INVALID_SPACE_MAPPING', 'Slides mapping must match its configured spaces exactly.');
+    if (!mapping || Object.keys(mapping).some(key => !['spaces','blobs','version'].includes(key)) || !mapping.spaces || typeof mapping.spaces !== 'object' || Array.isArray(mapping.spaces) || JSON.stringify(Object.keys(mapping.spaces).sort()) !== JSON.stringify([...slides.spaces].sort())) fail('INVALID_SPACE_MAPPING', 'Slides mapping must match its configured spaces exactly.');
     const files = Object.values(mapping.spaces);
-    if (new Set(files).size !== files.length || files.some(file => typeof file !== 'string' || dirname(file) !== slides.dataDir || !file.endsWith('.json'))) fail('INVALID_SPACE_MAPPING', 'Slides spaces require separate JSON files in their registered data directory.');
+    if (new Set(files).size !== files.length && !files.every(isDatabase) || files.some(file => typeof file !== 'string' || dirname(file) !== slides.dataDir || !(file.endsWith('.json') || isDatabase(file)))) fail('INVALID_SPACE_MAPPING', 'Slides spaces require separate JSON files in their registered data directory.');
     for (const file of files) await privatePath(file, { allowMissing: true, data: true, maxSize: Infinity });
     if (stateDirectories.concat(appDirectories).some(directory => overlaps(directory, slides.dataDir)) || readOnlyFiles.concat(slides.spacesFile).some(file => isWithin(slides.dataDir, file)) || isWithin(slides.dataDir, controlDirectory)) fail('OVERLAPPING_DATA_MOUNT', 'Slides data must remain separate from identity, other applications, credentials and controls.');
     appDirectories.push(slides.dataDir);

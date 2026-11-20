@@ -41,3 +41,7 @@ docker build -f Dockerfile.praxis -t praxis-lattice-slides:local .
 ```
 
 运行镜像时沿用上文的应用配置与持久数据位置。Praxis 安装流程使用同一份应用自有构建文件与部署声明。
+
+## SQLite storage and conversion
+
+Structured runtime records use the app database. The explicit operator command is `npm run storage:migrate -- --spec /absolute/private/sources.json --database /absolute/private/app.db --receipt /absolute/private/receipt.json --writers-stopped`. The private spec is an array of `{file, spaceId, documentId}` source references. Stop every writer, keep original files, and verify the receipt before activating the new binding. Existing JSON inputs remain explicit compatibility/import sources; a configured database never silently falls back to them. `--export --database /absolute/private/app.db --space SPACE --document state --output /absolute/private/new-export.json` exports an exact logical namespace for recovery. Files/assets keep their existing ownership.

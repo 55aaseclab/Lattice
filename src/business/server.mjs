@@ -1,3 +1,4 @@
+import { isDatabase } from '../sqlite-document.mjs';
 import { createServer as httpServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
@@ -38,10 +39,11 @@ export function verifyAssertion(raw, assertion, key, now = Date.now(), path = '/
   return claims;
 }
 export class BusinessService {
-  constructor({ key, spaces, renderer, authorizationCheck, now = Date.now }) {
+  constructor({ key, spaces, blobs = {}, renderer, authorizationCheck, now = Date.now }) {
     if (!Buffer.isBuffer(key) || key.length < 32 || key.length > 4096 || !object(spaces) || !Object.keys(spaces).length) throw new Error('Slides business configuration is invalid.');
+    if(!object(blobs)||Object.entries(blobs).some(([space,path])=>!Object.hasOwn(spaces,space)||typeof path!=='string'||!isAbsolute(path)))throw new Error('Invalid app-owned blob mapping.');
     this.key = Buffer.from(key); this.now = now; this.stores = new Map();
-    for (const [spaceId, file] of Object.entries(spaces)) { if (!validId(spaceId) || !isAbsolute(file) || [...this.stores.values()].some(store => store.file === file)) throw new Error('Slides spaces require distinct absolute data files.'); this.stores.set(spaceId, new SlidesStore(file, { renderer, authorizationCheck, now })); }
+    for (const [spaceId, file] of Object.entries(spaces)) { if (!validId(spaceId) || !isAbsolute(file) || [...this.stores.values()].some(store => store.file === file && !isDatabase(file))) throw new Error('Slides spaces require distinct absolute data files.'); this.stores.set(spaceId, new SlidesStore(file, { spaceId, blobsDirectory: blobs[spaceId], renderer, authorizationCheck, now })); }
     this.ready = Promise.all([...this.stores.values()].map(store => store.recover()));
   }
   validateRequest(request, claims) {
@@ -101,7 +103,7 @@ async function checkAuthorization(url, headers, body) {
 function privateFile(path) { if (!isAbsolute(path || '')) throw new Error('Slides secrets require absolute paths.'); const info = lstatSync(path); if (!info.isFile() || info.isSymbolicLink() || info.mode & 0o077 || info.size > 65536) throw new Error('Slides secrets require private regular files.'); return readFileSync(path); }
 export function loadBusinessService(env = process.env, renderer) {
   const key = privateFile(env.SLIDES_BUSINESS_KEY_FILE), config = JSON.parse(privateFile(env.SLIDES_BUSINESS_SPACES_FILE).toString('utf8'));
-  if (!object(config) || Object.keys(config).some(name => !['version', 'spaces'].includes(name)) || config.version !== undefined && config.version !== 1) throw new Error('Slides spaces configuration is invalid.');
+  if (!object(config) || Object.keys(config).some(name => !['version', 'spaces', 'blobs'].includes(name)) || config.version !== undefined && config.version !== 1) throw new Error('Slides spaces configuration is invalid.');
   if (env.SLIDES_BUSINESS_AUTHORIZATION_HOST && !/^[A-Za-z0-9.:[\]-]{1,250}$/.test(env.SLIDES_BUSINESS_AUTHORIZATION_HOST)) throw new Error('Invalid Slides callback Host.');
   let authorizationCheck;
   if (env.SLIDES_BUSINESS_AUTHORIZATION_URL) {
@@ -115,7 +117,7 @@ export function loadBusinessService(env = process.env, renderer) {
       return checkAuthorization(url, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'x-praxis-business-assertion': assertion, ...(env.SLIDES_BUSINESS_AUTHORIZATION_HOST ? { Host: env.SLIDES_BUSINESS_AUTHORIZATION_HOST } : {}) }, body);
     };
   }
-  return new BusinessService({ key, spaces: config.spaces, renderer, authorizationCheck });
+  return new BusinessService({ key, spaces: config.spaces, blobs: config.blobs, renderer, authorizationCheck });
 }
 async function main() {
   let host = '127.0.0.1', port = 4328;

@@ -11,3 +11,7 @@ The app owns a version-1 `praxis-provider.mjs` contract for source-backed workbe
 ## App-owned Praxis integration
 
 This app owns its reviewed `praxis-integration.mjs`: native entry policy, typed business operations and MCP guidance where supported. Praxis loads that declaration from the installed source and retains authorization, signing, policy leases and audit. Installation does not grant access or start a backend. Existing native interfaces, data ownership and recovery boundaries remain in force.
+
+## Structured database storage
+
+The authoritative structured store uses app-owned SQLite with stable space/resource identities and unchanged native/API/CLI behavior. Use explicit JSON import/export and lossless conversion; preserve revisions, ordering, extension fields, receipts, events and mode. Keep originals/assets separate, do not initialize a missing configured source silently, and retain immutable legacy sources and a reversible cutover. Prove synthetic parity, isolation, concurrent/replayed writes, integrity and export/reopen before deployment.
