@@ -1,0 +1,11 @@
+import { access, lstat, readFile, realpath, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+const isWithin = (parent, child) => { const path = relative(resolve(parent), resolve(child)); return path === '' || (path !== '..' && !path.startsWith('..' + sep) && !isAbsolute(path)); };
+const bind = (source, target, read_only) => ({ type: 'bind', source, target, read_only, bind: { create_host_path: false } });
+export function createStackIntegration() { return {
+services: [{ name: 'slides', port: 4666 }, { name: 'slides-public', port: 14666 }],
+resolveSources(ctx) { const decks = ctx.registeredMode ? ctx.registered('slides', 'decks', 'directory') : join(ctx.appsRoot, 'slides/decks'), state = ctx.registeredMode ? ctx.registered('slides', '.lattice', 'directory') : join(ctx.appsRoot, 'slides/.lattice'); return { sources: [{ key: 'slidesDecks', path: decks, order: 3 }, { key: 'slidesState', path: state, order: 4 }], data: [{ path: decks, kind: 'directory', writable: true }, { path: state, kind: 'directory', writable: true }, { path: join(decks, 'registry.js'), kind: 'file', writable: true, nonempty: true }] }; },
+environment: ({ settings }) => ({ PRAXIS_SLIDES_DECKS_DIR: settings.sourceMap.slidesDecks, PRAXIS_SLIDES_STATE_DIR: settings.sourceMap.slidesState }),
+async assets({ compose, services }) { if (services && !services.includes('slides-public')) throw new Error('assets requires the registered Slides public service.'); const prepare = "import{mkdir}from'node:fs/promises';import{existsSync}from'node:fs';const app=existsSync('/app/package.json')?'/app':'/workspace/third_party/lattice';process.env.PRAXIS_LATTICE_ROOT=process.env.SLIDES_PROJECT_ROOT=app;for(const name of ['viewer','workbench','business'])await mkdir(app+'/.lattice/runtime/'+name,{recursive:true});await import(existsSync('/opt/praxis/scripts/build-slides-public.mjs')?'/opt/praxis/scripts/build-slides-public.mjs':'/workspace/scripts/build-slides-public.mjs')"; await compose(['run', '--rm', '-T', '--interactive=false', '--no-deps', '--entrypoint', 'node', 'slides-public', '--input-type=module', '-e', prepare]); }
+}; }

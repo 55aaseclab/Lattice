@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+
+# Build this application from its own repository context.
+FROM ${NODE_IMAGE} AS base
+ARG PRAXIS_UID=1000
+ARG PRAXIS_GID=1000
+WORKDIR /app
+ENV NODE_ENV=production HOST=127.0.0.1
+RUN groupmod -o -g "${PRAXIS_GID}" node && usermod -o -u "${PRAXIS_UID}" node \
+    && mkdir -p /app /data /data/home && chown -R node:node /app /data /home/node
+USER node
+
+FROM base AS lattice
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium ffmpeg gcc libc6-dev ca-certificates fonts-dejavu-core fonts-liberation fonts-noto-cjk \
+    libgomp1 libglib2.0-0 libnss3 libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+USER node
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node packages/runtime/package.json ./packages/runtime/
+COPY --chown=node:node packages/cli/package.json ./packages/cli/
+COPY --chown=node:node packages/cli/src/index.js ./packages/cli/src/
+COPY --chown=node:node praxis/packaging/prune-video-engines.mjs /opt/praxis/scripts/
+RUN ONNXRUNTIME_NODE_INSTALL_CUDA=skip npm ci --include=dev --no-audit --no-fund \
+    && node /opt/praxis/scripts/prune-video-engines.mjs /app
+COPY --chown=node:node packages/runtime/src/ ./packages/runtime/src/
+COPY --chown=node:node packages/runtime/themes/ ./packages/runtime/themes/
+COPY --chown=node:node packages/cli/src/ ./packages/cli/src/
+COPY --chown=node:node src/ ./src/
+COPY --chown=node:node scripts/ ./scripts/
+COPY --chown=node:node decks/registry.js ./decks/
+COPY --chown=node:node decks/registry.js ./default-decks/
+COPY --chown=node:node index.html lattice.config.js vite.config.mjs ./
+COPY --chown=node:node praxis/packaging/ /opt/praxis/scripts/
+ENV PRAXIS_LATTICE_ROOT=/app PUBLIC_BASE_PATH=/apps/slides
+RUN node /opt/praxis/scripts/build-slides-public.mjs \
+    && mkdir -p /data/slides/home /data/slides/cache /app/dist/static-decks /app/.lattice/runtime \
+    && mv /app/dist-public-viewer /app/.lattice/runtime/viewer \
+    && mv /app/dist-public-workbench /app/.lattice/runtime/workbench \
+    && mv /app/dist-public-business /app/.lattice/runtime/business \
+    && ln -s /app/.lattice/runtime/viewer /app/dist-public-viewer \
+    && ln -s /app/.lattice/runtime/workbench /app/dist-public-workbench \
+    && ln -s /app/.lattice/runtime/business /app/dist-public-business \
+    && ln -s dist-public-business /app/dist-business
+RUN node /opt/praxis/scripts/prune-video-engines.mjs /app
+COPY --chown=node:node praxis-provider.mjs ./
+ENV PORT=14666 HOME=/data/slides/home XDG_CACHE_HOME=/data/slides/cache LATTICE_CHROMIUM=/usr/bin/chromium LATTICE_TTS_CACHE=/data/slides/cache/kokoro LATTICE_PIPER_DIR=/data/slides/cache/piper
+EXPOSE 14666 4328
+CMD ["node", "/opt/praxis/scripts/start-lattice.mjs"]
