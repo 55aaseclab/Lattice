@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "id": "lattice-slides",
+  "version": "0.2.1",
+  "kind": "app",
+  "name": "Lattice Slides",
+  "description": "Presentations",
+  "labels": {
+    "en": {
+      "name": "Lattice Slides",
+      "description": "Presentations"
+    },
+    "zh": {
+      "name": "Lattice",
+      "description": "演示文稿"
+    }
+  },
+  "icon": "public/praxis-icon.svg",
+  "iconAliases": [
+    "/slides-icon.svg"
+  ],
+  "path": "/",
+  "port": 4666,
+  "documents": {
+    "prd": {
+      "en": "docs/PRD.en.md",
+      "zh": "docs/Slides-Platform_PRD.md"
+    }
+  }
+}

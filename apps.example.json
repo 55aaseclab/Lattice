@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "apps": [
+    {
+      "manifest": "./praxis-app.json",
+      "id": "lattice-slides-local",
+      "url": "http://127.0.0.1:4666/"
+    }
+  ]
+}
